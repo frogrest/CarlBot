@@ -1,8 +1,17 @@
-# Autonomous CCTV Technical-Support AI Lab
+# CarlBot — Autonomous CCTV Technical-Support AI Lab
 
 > **Automate the repetitive technical work around the technician, not the technician out of the work.**
 
+[![GitHub Repo](https://img.shields.io/badge/GitHub-frogrest%2FCarlBot-blue?logo=github)](https://github.com/frogrest/CarlBot)
+[![Tests](https://img.shields.io/badge/Tests-86%20Passed-brightgreen)](#run-tests-86-automated-tests)
+[![Python](https://img.shields.io/badge/Python-3.11+-informational?logo=python)](https://python.org)
+[![React](https://img.shields.io/badge/Frontend-React%2019%20%7C%20Vite%206-61dafb?logo=react)](https://vitejs.dev)
+
 This repository is a **safe, fully simulated** environment for developing an autonomous technical-support assistant for CCTV, IP cameras, NVRs, AI Boxes, and helpdesk operations. It never connects to real customer systems, real cameras, or production infrastructure.
+
+- **GitHub Repository:** [https://github.com/frogrest/CarlBot](https://github.com/frogrest/CarlBot)
+
+---
 
 ## Quick Start (Local)
 
@@ -26,12 +35,11 @@ python -m pip install -r requirements.txt
 python scripts/run_local.py
 ```
 
-This launches all four services:
-This launches all five components:
-- **Operations Web UI** → http://localhost:5173
-- **Helpdesk API** → http://127.0.0.1:8001/docs
-- **Portal API** → http://127.0.0.1:8002/docs
-- **Agent API** → http://127.0.0.1:8003/docs
+This launches all five components concurrently:
+- **Operations Web UI** → [http://localhost:5173](http://localhost:5173)
+- **Helpdesk API** → [http://127.0.0.1:8001/docs](http://127.0.0.1:8001/docs)
+- **Operations Portal API** → [http://127.0.0.1:8002/docs](http://127.0.0.1:8002/docs)
+- **Agent API** → [http://127.0.0.1:8003/docs](http://127.0.0.1:8003/docs)
 - **Agent loop** → runs in background, polling every 5 seconds
 
 Press `Ctrl+C` to cleanly stop all services.
@@ -48,62 +56,77 @@ npm test         # Run frontend test suite (Vitest + React Testing Library)
 npm run build    # Build production bundle with strict TypeScript validation
 ```
 
+---
+
 ## Quick Start (Docker)
 
 ```bash
 docker compose up --build
 ```
 
-## Run Tests
+---
+
+## Run Tests (86 Automated Tests)
 
 ```bash
 # Backend pytest suite (60 tests) + linter
 python -m pytest -q
 python -m ruff check .
 
-# Frontend Vitest suite (19 tests)
+# Frontend Vitest suite (26 tests across 7 suites)
 cd frontend
 npm test
 npm run build
 ```
 
-## Operations UI Features
+---
+
+## Operations UI & AI Assistant Features
 
 The Operations Web UI provides 10 purpose-built NOC views and real-time monitoring:
 - **NOC Operations Dashboard** (`/`): Real-time KPI metric cards, site health breakdown, recent incident queue, active fault indicators, and a one-click Quick Fault Simulator modal.
 - **Incident Queue & Detail** (`/incidents`, `/incidents/:id`): Filterable tickets with status tabs, severity indicators, expandable diagnostic timelines, historical matches, and technician note-taking.
 - **Device Inventory & Detail** (`/devices`, `/devices/:id`): Camera/NVR/AI Box cards with RTSP ping/latency indicators, telemetry gauges (CPU, memory, storage, temp), and live fault injection shortcuts.
-- **Site Overview & Detail** (`/sites`, `/sites/:id`): Multi-site health rollups with visual **Topology Graphs** visualizing network dependencies (Gateway → NVR → Cameras/AI Box → Cloud Sync) and identifying correlated outages.
-- **AI Assistant** (`/assistant`): Interactive conversational console with rich markdown, tool execution step pills (`running`, `success`, `failure`, `blocked`), and command auto-completion.
+- **Site Overview & Detail** (`/sites`, `/sites/:id`): Multi-site health rollups with visual **Topology Graphs** visualizing network dependencies (`Gateway` → `NVR` → `Cameras/AI Box` → `Cloud Sync`) and identifying correlated multi-camera outages.
+- **AI Assistant** (`/assistant`): Interactive conversational console supporting both slash commands and full natural language questions.
 - **Authoritative Knowledge Base** (`/knowledge`): Full-text searchable Markdown SOP and runbook browser rendered dynamically from `data/knowledge/`.
 - **System Audit Log** (`/audit`): Filterable chronological log of all autonomous and human actions.
 
-### AI Assistant Slash Commands
+### AI Assistant: Natural Language & Slash Commands
 
-| Command | Usage | Description |
+You can converse with CarlBot **naturally** without knowing specific command syntax:
+
+| Interaction Style | Example Input | Behavior |
 |---|---|---|
-| `/investigate <ASSET_ID>` | `/investigate CAM-001` | Runs autonomous diagnostics, checks policy, retrieves SOPs, and reports evidence |
-| `/status <ASSET_ID>` | `/status AI-BOX-001` | Instant telemetry snapshot (health, ping, RTSP, CPU, storage, memory) |
-| `/site <SITE_ID>` | `/site SITE-001` | Full site diagnostics, device statuses, and multi-camera correlated outage analysis |
-| `/history <QUERY>` | `/history rtsp error` | Searches historical tickets and past resolution notes |
-| `/help` | `/help` | Displays available slash commands, usage examples, and safety constraints |
-| `/clear` | `/clear` | Clears conversation state while safely preserving tickets, devices, and audit logs |
+| **Natural Device Inquiry** | *"Check the lobby camera"* / *"What's wrong with cam 2?"* | Automatically resolves aliases (`lobby camera` → `CAM-001`), executes checks, retrieves SOPs, and reports status. |
+| **Healthy Device Verification** | *"Is CAM-001 ok?"* | Accurately verifies operational health (`Asset verified healthy`) without false technician escalations. |
+| **Fleet Health & Outages** | *"What faults are active?"* / *"System health"* | Summarizes all active faults, offline devices, and current open tickets. |
+| **Safety Policy Inquiries** | *"Explain safety policy"* / *"Why can't you fix PoE?"* | Outlines policy tiers and explains why physical hardware & credentials require human technician dispatch. |
+| **Direct Slash Command** | `/investigate CAM-002` | Structured on-demand investigation with live diagnostic tool transparency pills. |
+| **Status Snapshot** | `/status AIBOX-001` | Instant telemetry snapshot (health, ping, RTSP, CPU, storage, memory). |
+| **Multi-Camera Site Outage** | `/site SITE-001` | Analyzes site gateway dependencies and detects correlated switch outages. |
+| **Knowledge Retrieval** | `/history rtsp error` | Searches past tickets and technician resolution notes. |
+| **UI Reset** | `/clear` | Clears conversational message history while safely preserving all backend tickets and device telemetry. |
 
-### Safety Policy Enforcement & Visualization
+---
+
+## Safety Policy Enforcement
 
 Every action displays its strict safety tier:
-- 🟢 **SAFE_REVERSIBLE** (e.g. `reconnect_stream`, `restart_service`): Safe to automate autonomously.
+- 🟢 **SAFE_REVERSIBLE** (e.g. `reconnect_stream`, `restart_service`, `retry_upload`, `clear_transient`): Automated autonomously with immediate post-action verification.
 - 🟡 **APPROVAL_REQUIRED** (e.g. `reboot_host`, `update_config`): Requires human confirmation.
-- 🔴 **HUMAN_ONLY** (e.g. `hardware_repair`, `credential_rotation`): Blocked from autonomous execution; creates technician alert.
+- 🔴 **HUMAN_ONLY** (e.g. `hardware_repair`, `credential_rotation`, `poe_power_off`): Blocked from autonomous execution; creates technician alert.
 - 🔵 **READ** (e.g. `ping_check`, `rtsp_check`): Read-only diagnostic checks, always safe.
 
 *The policy engine (`services/agent/policy.py`) is authoritative and runs strictly on the backend. Frontend controls reflect policy but can never bypass it.*
 
-## Inject a Fault
+---
+
+## Fault Simulator & Presets
 
 ```bash
 # Via Web UI:
-Click the "Lab Controls" / "Inject Fault" button in the top navigation bar.
+Click the "Lab Controls" button in the top navigation bar to inject or clear faults with one click.
 
 # Via API (with services running)
 curl -X POST http://localhost:8002/faults/CAM-001 -H "Content-Type: application/json" -d '{"fault":"rtsp_down"}'
@@ -118,50 +141,37 @@ python scripts/inject_fault.py --clear CAM-001
 python scripts/inject_fault.py --list
 ```
 
-## Read Tickets
+### Supported Faults
 
-```bash
-curl http://localhost:8001/tickets
-curl http://localhost:8001/search?q=rtsp
-```
+| Fault | Target | Auto-recoverable? | Agent action |
+|---|---|---|---|
+| `network_down` | Camera | No | Escalate to technician (`HUMAN_ONLY`) |
+| `rtsp_down` | Camera | ✅ Yes | `reconnect_stream` (`SAFE_REVERSIBLE`) |
+| `rtsp_auth_failure` | Camera | No | Escalate to technician (`HUMAN_ONLY`) |
+| `wrong_rtsp_path` | Camera | No | Escalate to technician (`HUMAN_ONLY`) |
+| `poe_power_off` | Camera | No | Escalate (physical repair) (`HUMAN_ONLY`) |
+| `high_cpu` | AI Box | No | Escalate to technician (`HUMAN_ONLY`) |
+| `storage_full` | NVR | No | Escalate to technician (`HUMAN_ONLY`) |
+| `intermittent_connectivity` | Camera | ✅ Yes | `clear_transient` (`SAFE_REVERSIBLE`) |
+| `nvr_unavailable` | NVR | No | Escalate to technician (`HUMAN_ONLY`) |
+| `ai_box_service_failure` | AI Box | ✅ Yes | `restart_service` (`SAFE_REVERSIBLE`) |
+| `cloud_sync_failure` | AI Box | ✅ Yes | `retry_upload` (`SAFE_REVERSIBLE`) |
+| `multi_camera_site_outage` | Site | No | Escalate (site-level correlated failure) |
 
-## Trigger One Agent Cycle
+---
 
-```bash
-curl -X POST http://localhost:8003/run-once
-curl -X POST http://localhost:8003/investigate/CAM-001
-```
+## Deployment & Hosting Roadmap
 
-## View Agent Policy
+CarlBot is engineered for dual deployment:
+1. **Local Mode:** Python 3.11 microservices (`run_local.py`) + Vite dev server.
+2. **Cloud Mode:**
+   - **Frontend:** Static React bundle hosted on **GitHub Pages** ([https://frogrest.github.io/CarlBot](https://frogrest.github.io/CarlBot)).
+   - **Backend:** Unified FastAPI gateway hosted on **Render** (free web service) running all 3 services + 24/7 background agent loop on a single port.
+   - **Offline / Cold-Start Resilience:** Client-side in-memory mock fallback ensures the simulator works instantly on the web even while cloud instances wake up.
 
-```bash
-curl http://localhost:8003/policy
-```
+---
 
-## Reset All State
-
-```bash
-python scripts/reset_lab.py
-```
-
-## Supported Faults
-
-| Fault | Auto-recoverable? | Agent action |
-|---|---|---|
-| `network_down` | No | Escalate to technician |
-| `rtsp_down` | ✅ Yes | `reconnect_stream` |
-| `rtsp_auth_failure` | No | Escalate to technician |
-| `wrong_rtsp_path` | No | Escalate to technician |
-| `poe_power_off` | No | Escalate (physical repair) |
-| `high_cpu` | No | Escalate to technician |
-| `storage_full` | No | Escalate to technician |
-| `intermittent_connectivity` | ✅ Yes | `clear_transient` |
-| `nvr_unavailable` | No | Escalate to technician |
-| `ai_box_service_failure` | ✅ Yes | `restart_service` |
-| `cloud_sync_failure` | ✅ Yes | `retry_upload` |
-| `multi_camera_site_outage` | No | Escalate (site-level) |
-
-## Documentation
+## Documentation Directory
 
 - [SETUP_AND_DEVELOPMENT.md](SETUP_AND_DEVELOPMENT.md) — complete setup, development workflow, frontend architecture, and debugging
 - [AUTONOMOUS_AGENT_LAB.md](AUTONOMOUS_AGENT_LAB.md) — architecture, evidence model, and specification

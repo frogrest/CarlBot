@@ -93,8 +93,8 @@ Build and extend a **deterministic, safe** CCTV technical-support lab with a pro
 | `frontend/src/context/LabContext.tsx` | Real-time telemetry, polling, and fault management |
 | `frontend/src/components/timeline/InvestigationTimeline.tsx` | Diagnostic evidence and step breakdown |
 | `frontend/src/components/topology/TopologyGraph.tsx` | Network hierarchy and correlated outage visualizer |
-| `frontend/src/components/chat/ChatContainer.tsx` | AI Assistant conversational console & slash parser |
+| `frontend/src/components/chat/ChatContainer.tsx` | AI Assistant conversational console, natural language intent parser, and slash commands |
 | `tests/test_lab.py` | Backend comprehensive test suite (60 tests) |
-| `frontend/src/test/` | Frontend Vitest test suites (19 tests) |
+| `frontend/src/test/` | Frontend Vitest test suites (26 tests across 7 suites) |
 | `data/knowledge/` | Authoritative troubleshooting documents (Markdown) |
-| `data/runtime/` | Generated simulator state files (gitignored) |
+| `data/runtime/` | Generated simulator state files (gitignored, atomic I/O protected) |

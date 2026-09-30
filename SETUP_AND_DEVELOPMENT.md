@@ -259,13 +259,14 @@ python -m ruff check .
 cd frontend
 npm test
 ```
-Vitest executes tests across:
-- `BadgeAndPolicy.test.tsx`: Policy color-coding and safety class labels
-- `ChatCommands.test.tsx`: Command parser, slash command execution, and `/clear` isolation
-- `InvestigationTimeline.test.tsx`: Expandable diagnostic steps and JSON evidence
-- `TopologyGraph.test.tsx`: Topology hierarchy and correlated multi-device outages
-- `SafetyEnforcement.test.tsx`: Human-in-the-loop alerts for non-reversible faults
-- `AppViews.test.tsx`: Navigation, page routing, and empty/error states
+Vitest executes 26 tests across 7 test suites:
+- `FaultSimulatorAndNaturalAI.test.tsx`: Comprehensive QA audit suite for fault dropdown rendering, quick scenarios, device fault compatibility, natural language queries, alias resolution ("lobby camera", "cam 1"), healthy device status reporting, and safety policy explanations.
+- `BadgeAndPolicy.test.tsx`: Policy color-coding and safety class labels.
+- `ChatCommands.test.tsx`: Command parser, slash command execution, and `/clear` isolation.
+- `InvestigationTimeline.test.tsx`: Expandable diagnostic steps and JSON evidence.
+- `TopologyGraph.test.tsx`: Topology hierarchy and correlated multi-device outages.
+- `SafetyEnforcement.test.tsx`: Human-in-the-loop alerts for non-reversible faults.
+- `AppViews.test.tsx`: Navigation, page routing, and empty/error states.
 
 ### Production Build
 ```bash
@@ -273,6 +274,41 @@ cd frontend
 npm run build
 ```
 Build output is generated under `frontend/dist/` with full type validation and bundle optimization.
+
+---
+
+## Cloud Deployment & GitHub Pages Architecture
+
+CarlBot supports dual-mode deployment: **Local Development** and **Zero-Cost Cloud Deployment**.
+
+### Architecture: GitHub Pages (Frontend) + Render.com (Backend)
+
+```mermaid
+flowchart LR
+    User[User Browser]
+    GH[GitHub Pages\nhttps://frogrest.github.io/CarlBot]
+    Cloud[Render Cloud Backend\nhttps://carlbot-api.onrender.com]
+    Agent[Autonomous Agent Loop\nRuns 24/7 in Background]
+
+    User -->|1. Loads static React/Vite UI| GH
+    User -->|2. Sends API calls / Chat / Faults| Cloud
+    Cloud <-->|3. Telemetry & Remediation| Agent
+```
+
+1. **Frontend Hosting (GitHub Pages):**
+   - Repository: [`frogrest/CarlBot`](https://github.com/frogrest/CarlBot)
+   - Hosted at: `https://frogrest.github.io/CarlBot/`
+   - Automated via GitHub Actions workflow (`.github/workflows/deploy.yml`) on every push to `main`.
+   - Build configured with Vite base path: `/CarlBot/`.
+
+2. **Backend Hosting (Render.com Free Web Service):**
+   - Single unified gateway app (`services/gateway.py`) mounting Helpdesk, Portal, and Agent microservices on a single port.
+   - Background worker: Starts the continuous autonomous agent loop (`run_forever()`) on server startup.
+   - Free tier includes automatic SSL (`https://`), preventing mixed-content warnings.
+
+3. **In-Browser Resilience Mode:**
+   - Free cloud instances sleep after 15 minutes of inactivity.
+   - The frontend includes in-memory simulated fallback mode so visitors can immediately test the interactive lab and AI Assistant without waiting for cold-start wakeups.
 
 ---
 
