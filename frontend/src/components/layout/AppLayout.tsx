@@ -6,6 +6,7 @@ import { LabControlsModal } from './LabControlsModal';
 
 export const AppLayout: React.FC = () => {
   const [labControlsOpen, setLabControlsOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const location = useLocation();
 
   const getPageInfo = (path: string) => {
@@ -26,13 +27,18 @@ export const AppLayout: React.FC = () => {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background">
-      <Sidebar onOpenLabControls={() => setLabControlsOpen(true)} />
+      <Sidebar
+        onOpenLabControls={() => setLabControlsOpen(true)}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+      />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         <Header
           title={title}
           subtitle={subtitle}
           onOpenLabControls={() => setLabControlsOpen(true)}
+          onToggleSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
         />
 
         <main className="flex-1 overflow-y-auto min-h-0 bg-background">

@@ -83,14 +83,15 @@ npm run build
 
 ## Operations UI & AI Assistant Features
 
-The Operations Web UI provides 10 purpose-built NOC views and real-time monitoring:
-- **NOC Operations Dashboard** (`/`): Real-time KPI metric cards, site health breakdown, recent incident queue, active fault indicators, and a one-click Quick Fault Simulator modal.
+The Operations Web UI is an industrial **High-Density NOC Console** providing 10 purpose-built views and real-time monitoring:
+- **NOC Operations Dashboard** (`/`): Real-time KPI metric deck, **Live CCTV Telemetry & Stream Matrix** with simulated 4-camera video preview frames, live FPS/resolution badges, active incident queue, and AI quick-dispatch terminal.
 - **Incident Queue & Detail** (`/incidents`, `/incidents/:id`): Filterable tickets with status tabs, severity indicators, expandable diagnostic timelines, historical matches, and technician note-taking.
 - **Device Inventory & Detail** (`/devices`, `/devices/:id`): Camera/NVR/AI Box cards with RTSP ping/latency indicators, telemetry gauges (CPU, memory, storage, temp), and live fault injection shortcuts.
 - **Site Overview & Detail** (`/sites`, `/sites/:id`): Multi-site health rollups with visual **Topology Graphs** visualizing network dependencies (`Gateway` → `NVR` → `Cameras/AI Box` → `Cloud Sync`) and identifying correlated multi-camera outages.
 - **AI Assistant** (`/assistant`): Interactive conversational console supporting both slash commands and full natural language questions.
 - **Authoritative Knowledge Base** (`/knowledge`): Full-text searchable Markdown SOP and runbook browser rendered dynamically from `data/knowledge/`.
 - **System Audit Log** (`/audit`): Filterable chronological log of all autonomous and human actions.
+- **NOC Mission Control Header**: Live UTC system clock ticker, agent daemon status beacon, and responsive mobile navigation drawer.
 
 ### AI Assistant: Natural Language & Slash Commands
 
@@ -171,9 +172,24 @@ CarlBot is engineered for dual deployment:
 
 ---
 
+## Specialized AI Subagents & Design System
+
+The repository includes dedicated pair-programming and audit subagents configured with the Antigravity customization system:
+
+- **Frontend Designer Subagent** ([`frontend/AGENTS.md`](frontend/AGENTS.md)): Scoped to all frontend files. Specializes in React 19, TypeScript strict mode, High-Density NOC Console UI, Tailwind CSS, and accessible telemetry ergonomics.
+- **QA Auditor & Visual Testing Subagent** ([`tests/AGENTS.md`](tests/AGENTS.md) & [`.agents/skills/qa-specialist/SKILL.md`](.agents/skills/qa-specialist/SKILL.md)): Scoped to test suites and end-to-end quality assurance. Runs full-stack verification (`pytest` + `vitest`), verifies policy engine safety invariants, audits visual layouts, and reports with reproducible evidence.
+- **Design Authority & Spec** ([`PRODUCT.md`](PRODUCT.md) & [`DESIGN.md`](DESIGN.md)): Built with **Impeccable** (`.agents/skills/impeccable/`). Enforces obsidian-blue high-density NOC design tokens, strict craft floor rules, and 0 anti-pattern scores.
+
+---
+
 ## Documentation Directory
 
+- [PRODUCT.md](PRODUCT.md) — durable product context, user profiles, and operational boundaries
+- [DESIGN.md](DESIGN.md) — high-density NOC console design tokens and craft rules
 - [SETUP_AND_DEVELOPMENT.md](SETUP_AND_DEVELOPMENT.md) — complete setup, development workflow, frontend architecture, and debugging
 - [AUTONOMOUS_AGENT_LAB.md](AUTONOMOUS_AGENT_LAB.md) — architecture, evidence model, and specification
 - [AGENTS.md](AGENTS.md) — instructions for AI coding agents and developer guidelines
+- [frontend/AGENTS.md](frontend/AGENTS.md) — instructions for the Frontend Designer subagent
+- [tests/AGENTS.md](tests/AGENTS.md) — instructions for the QA Auditor & Visual Testing subagent
 - [docs/LLM_INTERFACE.md](docs/LLM_INTERFACE.md) — future LLM integration contract
+

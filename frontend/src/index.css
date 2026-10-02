@@ -4,67 +4,91 @@
 
 @layer base {
   :root {
-    --background: #0a0e17;
-    --surface: #111827;
-    --surface-border: #1e293b;
+    --background: #070b12;
+    --surface: #0e1524;
+    --surface-border: #1c2a44;
   }
 
   body {
     background-color: var(--background);
     color: #f1f5f9;
-    font-family: 'Inter', sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: rgba(14, 165, 233, 0.35);
+    color: #ffffff;
+  }
+
+  *:focus-visible {
+    outline: 2px solid #0ea5e9;
+    outline-offset: 2px;
   }
 }
 
-/* Custom subtle scrollbars */
+/* Custom subtle NOC scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #0d131f;
+  background: #070b12;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #1c2a44;
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: #2d4268;
 }
 
-/* Badge and status utilities */
+/* Respect user's motion preferences without breaking state transitions */
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-"] {
+    animation: none !important;
+  }
+  * {
+    transition-duration: 0.05s !important;
+  }
+}
+
+/* Badge and status utilities with intentional high contrast */
 @layer components {
   .badge-healthy {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/70 text-emerald-400 border border-emerald-800/60;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-950/80 text-emerald-300 border border-emerald-700/60;
   }
   .badge-warning {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-950/70 text-amber-400 border border-amber-800/60;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-950/80 text-amber-300 border border-amber-700/60;
   }
   .badge-investigating {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-950/70 text-sky-400 border border-sky-800/60;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-950/80 text-sky-300 border border-sky-700/60;
   }
   .badge-technician {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-950/70 text-orange-400 border border-orange-800/60;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-950/80 text-orange-300 border border-orange-700/60;
   }
   .badge-critical {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-950/70 text-rose-400 border border-rose-800/60;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-950/80 text-rose-300 border border-rose-700/60;
   }
   .badge-unknown {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-900 text-slate-400 border border-slate-700/60;
+    @apply inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-900 text-slate-300 border border-slate-700/60;
   }
 
-  /* Policy badges */
+  /* Policy badges: strict NOC telemetry standard */
   .policy-read {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-sky-950/80 text-sky-300 border border-sky-800/50;
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-sky-950/90 text-sky-200 border border-sky-700/60;
   }
   .policy-safe {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-emerald-950/80 text-emerald-300 border border-emerald-800/50;
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-emerald-950/90 text-emerald-200 border border-emerald-700/60;
   }
   .policy-approval {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-amber-950/80 text-amber-300 border border-amber-800/50;
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-amber-950/90 text-amber-200 border border-amber-700/60;
   }
   .policy-human {
-    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-rose-950/80 text-rose-300 border border-rose-800/50;
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider bg-rose-950/90 text-rose-200 border border-rose-700/60;
   }
 
   /* Panels and cards */
@@ -73,5 +97,13 @@
   }
   .panel-subtle {
     @apply bg-surface-subtle border border-surface-border rounded-lg;
+  }
+  .panel-elevated {
+    @apply bg-surface-elevated border border-surface-border rounded-lg shadow-panel;
+  }
+
+  /* Telemetry metric pills */
+  .telemetry-pill {
+    @apply inline-flex items-center gap-1.5 px-2 py-1 rounded bg-surface-subtle border border-surface-border text-xs font-mono text-slate-200;
   }
 }

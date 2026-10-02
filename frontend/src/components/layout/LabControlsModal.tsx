@@ -182,7 +182,7 @@ export const LabControlsModal: React.FC<LabControlsModalProps> = ({ isOpen, onCl
                       <button
                         onClick={() => clearFault(assetId)}
                         disabled={actionLoading}
-                        className="px-2 py-1 text-[11px] rounded bg-surface-elevated hover:bg-rose-950 hover:text-rose-300 text-slate-400 border border-surface-border"
+                        className="px-2.5 py-1 text-[11px] font-medium rounded bg-surface-elevated hover:bg-rose-900/40 text-slate-300 hover:text-rose-200 border border-surface-border hover:border-rose-700/50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50"
                       >
                         Clear
                       </button>

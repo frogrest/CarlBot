@@ -275,6 +275,32 @@ npm run build
 ```
 Build output is generated under `frontend/dist/` with full type validation and bundle optimization.
 
+### Design System & Anti-Pattern Auditing
+To audit the frontend against the Impeccable design system:
+```powershell
+# Windows
+.agents\skills\impeccable\scripts\impeccable.cmd detect frontend
+
+# Linux / macOS
+.agents/skills/impeccable/scripts/impeccable detect frontend
+```
+
+---
+
+## AI Subagents & Pair Programming
+
+The project defines dedicated Antigravity subagents for specialized development:
+
+1. **Frontend Designer & UI/UX Specialist** ([`frontend/AGENTS.md`](frontend/AGENTS.md)):
+   - Scoped to `frontend/`.
+   - Enforces React 19, strict TypeScript, High-Density NOC Console aesthetics, WCAG AA contrast standards, and responsive layout rules.
+2. **QA Auditor & Visual Testing Specialist** ([`tests/AGENTS.md`](tests/AGENTS.md) & [`.agents/skills/qa-specialist/SKILL.md`](.agents/skills/qa-specialist/SKILL.md)):
+   - Runs full-stack verification (`pytest` + `vitest` + `tsc -b`).
+   - Audits safety policy boundaries (`READ`, `SAFE_REVERSIBLE`, `APPROVAL_REQUIRED`, `HUMAN_ONLY`).
+   - Produces structured QA reports with reproducible evidence.
+3. **Design Authority** ([`PRODUCT.md`](PRODUCT.md) & [`DESIGN.md`](DESIGN.md)):
+   - Documents product truth, positioning, obsidian-blue NOC color tokens, monospaced tabular data rules, and craft floor boundaries.
+
 ---
 
 ## Cloud Deployment & GitHub Pages Architecture

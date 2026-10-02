@@ -36,3 +36,12 @@ data/runtime/*.tmp*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Agent harnesses & binaries
+.agent/
+.claude/
+.codex/
+.gemini/
+.opencode/
+*.exe
+**/scripts/bin/
