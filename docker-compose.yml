@@ -1,0 +1,38 @@
+services:
+  helpdesk:
+    build:
+      context: .
+      dockerfile: services/helpdesk/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  portal:
+    build:
+      context: .
+      dockerfile: services/portal/Dockerfile
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  agent:
+    build:
+      context: .
+      dockerfile: services/agent/Dockerfile
+    environment:
+      HELPDESK_URL: http://helpdesk:8000
+      PORTAL_URL: http://portal:8001
+      DOCS_ROOT: /app/docs
+      AGENT_DB: /app/data/agent.db
+      AGENT_POLL_INTERVAL: "5"
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./data:/app/data
+      - ./docs:/app/docs:ro
+    depends_on:
+      - helpdesk
+      - portal
+    restart: unless-stopped

@@ -1,0 +1,1 @@
+Runtime data directory (Docker bind mount target). Database files here are gitignored — keep this placeholder so the folder exists in a clean checkout.

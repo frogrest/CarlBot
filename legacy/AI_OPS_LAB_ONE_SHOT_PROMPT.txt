@@ -1,0 +1,154 @@
+You are the lead AI developer for this project. Build the entire project from scratch in the current workspace and keep working until it is runnable, tested, and documented.
+
+PROJECT:
+Create a safe fake/emulated environment for an autonomous technical-support AI assistant for CCTV/AI-box/helpdesk operations. The system must reduce repetitive investigation work while keeping humans responsible for physical repairs, consequential changes, approvals, and final judgment.
+
+CORE SYSTEM:
+1. Fake Helpdesk
+   - Tickets, comments, technician notes, statuses, root causes, resolutions.
+   - Historical incidents that the agent can search.
+   - API for reading/updating tickets.
+2. Fake Operations Portal
+   - Simulated IP cameras, NVRs, AI Boxes, network state, RTSP state, site relationships.
+   - APIs for health, ping, TCP/port checks, RTSP checks, asset discovery, logs/status.
+   - Fault injection for realistic incidents.
+3. Autonomous Agent
+   - Runs continuously as a service.
+   - Watches for new/problem tickets and portal faults.
+   - Investigates automatically.
+   - Searches historical tickets and project documentation.
+   - Produces evidence-backed diagnosis.
+   - Recommends technician actions.
+   - Performs only explicitly allow-listed, reversible automatic actions.
+   - Verifies every automatic recovery.
+   - Updates tickets with evidence, diagnosis, actions, and outcomes.
+   - Escalates when human work or approval is required.
+4. Knowledge Layer
+   - Use project docs and user-provided documents as the authoritative knowledge source.
+   - Add a simple retrieval/RAG-ready architecture; keep it replaceable.
+5. Technician workflow
+   - Human-readable AI findings, next actions, pending-technician state, verification after human action.
+6. Evaluation
+   - Deterministic simulated scenarios with known expected diagnoses/actions.
+   - Tests for normal operation, faults, recovery, escalation, and regression.
+
+DEVELOPMENT REQUIREMENTS:
+- First inspect the workspace, operating system, installed tools, and available files.
+- Check for Docker, Docker Compose, Git, Python, and Node if useful.
+- Use Docker Compose for the application so it can run consistently.
+- Create a Python virtual environment and install project dependencies where useful for local development/testing.
+- Keep setup simple and cross-platform, especially Windows.
+- Do not require paid services.
+- Do not connect to real customer systems, real cameras, real NVRs, or production infrastructure.
+- Keep all simulated credentials/data clearly fake.
+- Use sensible defaults and create missing files/directories automatically when safe.
+- Do not ask unnecessary questions. Make reasonable engineering decisions and continue.
+- If a tool/command fails, diagnose it, fix the project, and retry.
+- Never claim success without actually checking it.
+
+RECOMMENDED STRUCTURE:
+- README.md — human quick start
+- AGENTS.md — instructions for future AI coding agents
+- SETUP_AND_DEVELOPMENT.md — installation/development/debugging guide
+- AUTONOMOUS_AGENT_LAB.md — architecture/specification
+- docker-compose.yml
+- requirements.txt
+- services/helpdesk/
+- services/portal/
+- services/agent/
+- docs/
+- tests/
+- data/ for local/generated state only
+
+AGENT SAFETY MODEL:
+Classify actions as:
+A. READ — automatically allowed: health, ping, logs, RTSP tests, ticket search, documentation retrieval.
+B. SAFE/REVERSIBLE — automatically allowed only when explicitly allow-listed: reconnect stream, restart simulated service, retry upload, clear simulated transient state.
+C. APPROVAL REQUIRED — never perform automatically without a human approval mechanism: credential changes, network changes, NVR/AI Box reboot if treated as consequential, configuration changes, firmware actions.
+D. HUMAN ONLY — physical repair, cable replacement, camera replacement/movement, factory reset, production network/security changes.
+The policy engine must enforce these rules independently of the model prompt.
+
+AGENT BEHAVIOR:
+Observe → Understand → Gather Evidence → Retrieve Knowledge → Form Hypothesis → Test Hypothesis → Decide → Execute Safe Action or Request Technician Action → Verify → Document → Learn from Actual Resolution.
+The agent must distinguish:
+- observed facts
+- retrieved historical evidence
+- hypotheses
+- confidence
+- recommended action
+- actions actually performed
+- verification result
+It must never invent device state, ticket history, tool results, or successful repairs.
+
+SIMULATED FAULTS TO SUPPORT:
+- network down
+- RTSP down
+- RTSP authentication failure
+- wrong RTSP path
+- PoE/power off
+- high CPU
+- storage full
+- intermittent connectivity
+- NVR unavailable
+- AI Box service failure
+- cloud synchronization failure
+- multi-camera/site outage
+Add a fault if needed to make the scenarios realistic.
+
+AUTONOMY:
+The agent must be persistent/event-driven rather than a one-shot script. It should:
+- poll or consume simulated events on a safe interval
+- create or update incidents
+- avoid duplicate tickets for the same active fault
+- re-arm after a fault is resolved so a later occurrence becomes a new incident
+- maintain agent state/history
+- have retry limits, timeouts, and an escalation stop condition
+- never loop forever on a failed action
+
+LLM INTEGRATION:
+Build the deterministic control/tool/evaluation layer first.
+Then add an LLM-ready reasoning interface with a clear system prompt/configuration, structured tool calls, and JSON/state outputs.
+Do not let the LLM bypass the policy engine.
+The final architecture should allow swapping the model provider without rewriting the simulator or tool layer.
+
+TESTING:
+At minimum:
+- unit tests
+- compile/lint checks where practical
+- Docker build/start smoke test
+- API smoke tests
+- end-to-end scenario tests
+- automatic recovery test
+- technician-required escalation test
+- repeated-fault/re-arming test
+- regression test for each supported fault
+Run the tests yourself and fix failures.
+
+DOCUMENTATION:
+Write exact commands for:
+- clean setup
+- dependency installation
+- Docker startup
+- stopping/resetting the lab
+- viewing logs
+- running tests
+- injecting faults
+- creating/reading/updating tickets
+- running the agent
+- debugging common failures
+- where user-provided documentation should be placed
+- how a future AI coding agent should continue development
+
+FINAL QUALITY BAR:
+Do not stop at a skeleton. Produce a coherent runnable repository.
+At the end:
+1. Show the final directory tree.
+2. State exactly how to start it.
+3. State how to run tests.
+4. State what autonomous behaviors are currently implemented.
+5. State what remains for the next development phase.
+6. Include all important instructions in the repository itself.
+7. Verify the final build with actual commands before declaring it complete.
+
+Important project philosophy:
+“Automate the repetitive technical work around the technician, not the technician out of the work.”
