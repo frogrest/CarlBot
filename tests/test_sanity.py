@@ -1,3 +1,5 @@
+import pytest
+
 from services.agent.core import Agent
 from services.agent.knowledge import KnowledgeBase
 
@@ -7,6 +9,8 @@ def test_auto_policy():
     assert a.allowed_auto_action('reconnect-rtsp')
     assert a.allowed_auto_action('restart-ai-service')
     assert not a.allowed_auto_action('change-network-config')
+    with pytest.raises(RuntimeError, match='policy-gated orchestrator'):
+        a.execute_action('reconnect-rtsp', 'CAM-027')
     a.close()
 
 

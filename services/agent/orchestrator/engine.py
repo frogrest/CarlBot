@@ -3,7 +3,7 @@ decide -> policy -> execute -> verify (or technician handoff).
 
 ORCHESTRATOR layer (AGENTS.md): plans routes, enforces budgets, gates on
 evidence review, asks policy before any action — it never grants itself
-permission. Specialists plug in behind the router in Phase 3.
+permission. Deterministic specialists provide evidence-only findings.
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict
 
 from ..policy.audit import AuditLog
 from ..policy.engine import PolicyEngine
+from ..specialists import SpecialistDispatcher
 from .budgets import Budget
 from .models import (ActionProposal, EvidenceType, Handoff, IncidentContext,
                      IncidentState, SpecialistFinding, VerificationResult)
@@ -46,6 +47,7 @@ class Orchestrator:
             self.store.save(ctx)
             self.machine.transition(ctx, P.CLASSIFYING, 'ticket received')
 
+        self.specialists = SpecialistDispatcher(self.tools, ctx.budget)
         steps = 0
         while ctx.state not in SUPPRESS_STATES and steps < 16:
             reason = ctx.budget.exhausted_reason()
@@ -91,8 +93,10 @@ class Orchestrator:
                              source='router', etype=EvidenceType.INFERRED)
         ctx.fault = (health or {}).get('fault')
         ctx.route = route(derive_signals(ctx.observations))
-        for _ in ctx.route:
+        for planned in ctx.route:
             ctx.budget.charge_specialist()
+            ctx.findings.append(self.specialists.run(
+                planned['agent'], ctx, planned['question']))
         self.machine.transition(ctx, P.EVIDENCE_REVIEW,
                                 f'{len(ctx.route)} specialist(s) planned')
 
@@ -249,6 +253,24 @@ class Orchestrator:
                 uncertainty=f'policy decision: {decision.reason}')
             target = P.HUMAN_REQUIRED if decision.requires_human else P.PENDING_TECHNICIAN
             self.machine.transition(ctx, target, f'policy denied: {decision.reason}')
+            return
+        ctx.budget.charge_specialist()
+        review = self.specialists.run(
+            'evidence', ctx, 'Check the proposed action against the observed preconditions.')
+        ctx.findings.append(review)
+        if not review.recommendations or review.recommendations[0] != 'GO_SAFE_ACTION':
+            review_reason = review.hypotheses[0] if review.hypotheses else 'Evidence review did not approve execution.'
+            self.audit.record(
+                incident_id=ctx.incident_id, ticket_id=ctx.ticket_id,
+                action=proposal.name, reason=review_reason,
+                evidence_ids=[item.id for item in review.evidence],
+                decision='deny', result='evidence review blocked execution')
+            ctx.handoff = self._build_handoff(
+                ctx,
+                requested_action='Collect the missing evidence or continue with a technician.',
+                why=f'evidence review blocked action: {review_reason}',
+                uncertainty=review_reason)
+            self.machine.transition(ctx, P.PENDING_TECHNICIAN, review_reason)
             return
         self.machine.transition(ctx, P.SAFE_EXECUTION, 'policy allowed')
 

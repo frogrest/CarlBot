@@ -47,6 +47,12 @@ def test_orchestrator_recovers_rtsp_down(stack, helpdesk, portal):
     assert ctx.verification is not None and ctx.verification.passed
     assert ctx.executed_actions == ['reconnect-rtsp']
     assert [r['agent'] for r in ctx.route] == ['rtsp']
+    assert {finding.agent for finding in ctx.findings} >= {'rtsp', 'evidence'}
+    assert any(
+        finding.agent == 'evidence'
+        and finding.recommendations[0] == 'GO_SAFE_ACTION'
+        for finding in ctx.findings
+    )
     audit = AuditLog(stack[3].db_path)
     assert any(
         row['action'] == 'reconnect-rtsp' and row['decision'] == 'allow'

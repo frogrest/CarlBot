@@ -135,6 +135,16 @@ A specialist should not:
 - invent test results
 - fabricate historical matches
 
+## Current deterministic implementation
+
+`services/agent/specialists/` provides evidence-only implementations for Helpdesk, Network, RTSP, Camera/NVR, AI Box, Knowledge, Evidence Review, and Technician Handoff. The orchestrator invokes the routed diagnostic specialists after its base probes. Historical-ticket, document, and site-inventory lookups use a budgeted read-only tool view; specialist code cannot access the action method.
+
+The Evidence Review specialist checks an action proposal against the live observations and the routed specialist's recommendation. It can block execution, but it cannot grant permission. The independent policy engine must still allow the action, and the orchestrator must verify the postcondition. Technician Handoff produces a human-only recommendation and never changes ticket state itself.
+
+These implementations are deterministic rules, not LLM agents. Specialists run sequentially in the current build. They report findings to the orchestrator; diagnosis, ticket transitions, policy decisions, and actions remain orchestrator-owned.
+
+The legacy `Agent` adapter is read-only with respect to infrastructure: direct action calls fail explicitly. All autonomous execution must enter through the orchestrator's evidence review and policy gates.
+
 ## Human handoff
 
 A handoff must contain:

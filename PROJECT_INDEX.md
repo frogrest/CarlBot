@@ -40,7 +40,7 @@ The included lab (services at version 0.2.0) already contains:
 - Tests
 - Docker Compose runtime
 
-The multi-agent orchestrator is scaffolded (Phase 2, validation pending — see `NEXT_AGENT_BRIEF.md` Progress log): `services/agent/orchestrator/` (state machine `IncidentStore`/`StateMachine`, evidence router, budgets, engine run-loop), `services/agent/policy/` (permission engine + audit log), `services/agent/tools/` (ToolBus), wired into `services/agent/main.py` (`build_orchestrator()`, `process_ticket()`, `GET /api/incidents/{ticket_id}`), with `tests/test_orchestrator.py` (8 tests). Still ahead: specialized agents, screenshot-driven frontend replica (operative prompt: `frontend/FRONTEND_BUILD_PROMPT.md`), and full chatbot UI. The documentation in this package tells an AI coding agent how to add them without breaking the safe emulator boundary.
+The Phase 2 orchestrator is validated: `services/agent/orchestrator/` (state machine, evidence router, budgets, engine), `services/agent/policy/` (permission engine + audit log), and `services/agent/tools/` (safe ToolBus), wired into `services/agent/main.py` and helpdesk status updates. Phase 3 adds deterministic, evidence-only specialists under `services/agent/specialists/` for Helpdesk, Network, RTSP, Camera/NVR, AI Box, Knowledge, Evidence Review, and Technician Handoff. Specialist lookup tools are read-only and budgeted; policy remains the only permission authority. Validation details and limitations are in `NEXT_AGENT_BRIEF.md`. Still ahead: the LLM adapter, screenshot-driven frontend replica (operative prompt: `frontend/FRONTEND_BUILD_PROMPT.md`), and full chatbot UI.
 
 ## Safety rule
 

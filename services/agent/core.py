@@ -56,7 +56,7 @@ class Agent:
     def site_assets(self, site_id: str):
         return self.client.get(f'{self.portal}/api/site/{site_id}/assets').raise_for_status().json()['assets']
 
-    # -- adapter surface for core.Agent delegation (Phase 3 owns the rest) --
+    # -- adapter surface for orchestrator delegation ----------------------
     def allowed_auto_action(self, action: str) -> bool:
         return action in self.AUTO_ACTIONS
 
@@ -69,14 +69,12 @@ class Agent:
     def execute_action(self, action: str, asset_id: str):
         if not self.allowed_auto_action(action):
             raise ValueError(f'tool bus refuses unregistered action: {action}')
-        return self._auto_action(asset_id, action)
+        raise RuntimeError(
+            'Direct agent actions are disabled; use the policy-gated orchestrator.')
 
     def _auto_action(self, asset: str, action: str):
-        endpoint = {
-            'reconnect-rtsp': f'/api/assets/{asset}/actions/reconnect-rtsp',
-            'restart-ai-service': f'/api/assets/{asset}/actions/restart-ai-service',
-        }[action]
-        return self.client.post(f'{self.portal}{endpoint}', json={'actor': 'autonomous-agent'}).raise_for_status().json()
+        raise RuntimeError(
+            'Direct agent actions are disabled; use the policy-gated orchestrator.')
 
     def _update_ticket(self, ticket_id: int, **fields):
         return self.client.patch(f'{self.helpdesk}/api/tickets/{ticket_id}', json=fields).raise_for_status().json()
@@ -123,19 +121,16 @@ class Agent:
             return AgentResult(ticket_id, 'Likely RTSP authentication/configuration mismatch', 'high', evidence, 'Verify RTSP credentials and stream configuration.', technician_required=True, next_status='pending_technician')
 
         if h.get('rtsp') == 'unavailable':
-            if self.allowed_auto_action('reconnect-rtsp'):
-                resp = self._auto_action(asset, 'reconnect-rtsp')
-                evidence['auto_action_result'] = resp
-                if resp.get('ok') and self.health(asset).get('rtsp') == 'healthy':
-                    return AgentResult(ticket_id, 'Transient RTSP interruption recovered automatically', 'high', evidence, 'No technician action unless the issue recurs.', 'reconnect-rtsp', technician_required=False, next_status='resolved')
-            return AgentResult(ticket_id, 'RTSP stream unavailable', 'medium', evidence, 'Reconnect/restart the RTSP source and verify the stream.', technician_required=True, next_status='pending_technician')
+            return AgentResult(
+                ticket_id, 'RTSP stream unavailable', 'medium', evidence,
+                'Submit reconnect-rtsp to the policy-gated orchestrator; verify the stream before resolution.',
+                technician_required=True, next_status='pending_technician')
 
         if h.get('type') == 'ai_box' and h.get('service') == 'down':
-            resp = self._auto_action(asset, 'restart-ai-service') if self.allowed_auto_action('restart-ai-service') else {'ok': False}
-            evidence['auto_action_result'] = resp
-            if resp.get('ok') and self.health(asset).get('service') == 'healthy':
-                return AgentResult(ticket_id, 'AI service recovered after safe restart', 'high', evidence, 'No technician action unless the issue recurs.', 'restart-ai-service', technician_required=False, next_status='resolved')
-            return AgentResult(ticket_id, 'AI inference service is unavailable', 'high', evidence, 'Inspect the AI Box service and host health.', technician_required=True, next_status='pending_technician')
+            return AgentResult(
+                ticket_id, 'AI inference service is unavailable', 'high', evidence,
+                'Submit restart-ai-service to the policy-gated orchestrator; verify service health before resolution.',
+                technician_required=True, next_status='pending_technician')
 
         if h.get('cpu', 0) >= 90:
             return AgentResult(ticket_id, 'High resource utilization', 'high', evidence, 'Inspect resource usage and active processes before restarting services.', technician_required=True, next_status='pending_technician')
