@@ -108,6 +108,32 @@ icon sizing · shadow (if present in screenshots)
 
 Components consume tokens only — no hard-coded one-off colors/sizes.
 
+### 4.1 Copilot prominence and motion
+
+- Keep CarlBot visible in the ticket workflow and visually distinct from
+  secondary status information, without obscuring ticket content.
+- Use comfortable, readable chat typography (target 14–16px for messages and
+  composer text) and clear heading/input hierarchy.
+- Keep CarlBot beside the ticket queue on wide layouts so technicians can find
+  the assistant without scrolling past the full list; stack it after the queue
+  on narrow layouts.
+- Show direct, keyboard-accessible links for live Helpdesk tickets returned by
+  chat. Links must open that ticket in the workspace and support direct reload
+  or sharing; never link export-only records to unrelated local tickets.
+- Use CSS transitions for simple focus, hover, and message-arrival feedback.
+  Keep them brief and honor `prefers-reduced-motion`.
+- Add an animation dependency only when a real interaction needs capabilities
+  that CSS cannot provide.
+- Keep the helpdesk's restrained operational style: high contrast, clear
+  surfaces, and no distracting glass, parallax, or looping effects.
+
+Design references:
+
+- [UUPM design styles and UX guidelines](https://uupm.cc/)
+- [Motion for React](https://motion.dev/docs/react) is an option for future
+  state-aware interactions beyond the current CSS transitions.
+- [Motion accessibility and reduced-motion guidance](https://motion.dev/docs/react-accessibility)
+
 ## 5. Component inventory (minimum)
 
 From `docs/frontend/HELPDESK_REPLICATION.md`, extended with AI/chat:
@@ -195,15 +221,12 @@ Seed assets: `CAM-027, CAM-018, CAM-019, NVR-02, AI-BOX-07` at `SITE-104`.
 | `POST /api/monitor/run` | "Run monitor now" (lab) |
 | `POST /api/tickets/{id}/run` | "Investigate now" → `diagnosis, confidence, recommended_action, auto_action, next_status, evidence` |
 
-### Chat (Phase 6 — backend lands with the chat phase)
+### Ticket lookup chat
 
-Design ChatPanel against this contract; treat 404 gracefully until deployed:
+Use the read-only Helpdesk lookup endpoint:
 
 ```text
-POST /api/chat/sessions                → {session_id}
-POST /api/chat/sessions/{id}/messages  → {reply, investigation?}
-POST /api/chat/sessions/{id}/clear     → resets chat context only
-GET  /api/incidents/{ticket_id}        → incident state/evidence/plan
+POST /api/chat/query                   → {answer, matches, reference_export_available}
 ```
 
 ## 8. AI copilot behavior (the differentiating screen)
@@ -229,19 +252,20 @@ Rules:
 - Show agent progress lines (investigating / checking reachability / searching history / reviewing RTSP evidence / verification complete) via `/agent/api/status` polling (≈2–5 s; no websocket required).
 - Never display an action as successful because it *started*. Success requires the verification state.
 
-## 9. Chatbot / copilot panel
+## 9. Ticket lookup chat
 
 Per `docs/frontend/CHATBOT_SPEC.md`:
 
-- Inline with the ticket view (right dock or bottom panel), bound to the selected ticket/asset context.
-- Suggested prompts: `Investigate this ticket.` · `What have you found?` · `What evidence supports this diagnosis?` · `Which historical tickets are similar?` · `Run the approved diagnostic checks.`
-- Answers show diagnosis, confidence, evidence bullets (with ticket/doc citations), and next step — concise, no hidden chain-of-thought.
+- Available from the ticket queue and detail view, independent of ticket selection.
+- Search existing live Helpdesk tickets and the optional local reference CSV by site, camera, issue, status, or ticket ID.
+- Answer from retrieved record fields only. Mark partial site matches as unconfirmed and disclose when the export has metadata but no conversation.
+- Chat may call only `POST /helpdesk/api/chat/query`; it must not call agent, portal, note, ticket-write, or action endpoints.
 - **`/clear`** typed in the composer clears only that session's conversation, then displays verbatim:
 
   > Conversation context cleared. Ticket and system data were not changed.
 
   It must never trigger deletes against helpdesk/portal/agent data.
-- Distinguish error states in the UI: `model unavailable`, `tool unavailable`, `ticket unavailable`, `policy denied`, `technician required`, `verification failed`.
+- Show Helpdesk/API errors explicitly and never present a failed lookup as a successful search.
 
 ## 10. Safety rules (non-negotiable, from AGENTS.md)
 

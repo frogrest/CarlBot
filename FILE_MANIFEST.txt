@@ -1,7 +1,10 @@
-# FILE MANIFEST — AI Helpdesk Agent Package
+﻿# FILE MANIFEST — AI Helpdesk Agent Package
 # Generated from git ls-files --cached --others --exclude-standard.
 # Screenshot reference is reference/screenshots/reference.pdf.
 
+./.github/skills/frontend-visual-qa/SKILL.md
+./.github/skills/impeccable/SKILL.md
+./.github/skills/taste/SKILL.md
 ./.gitignore
 ./AGENTS.md
 ./AUTONOMOUS_AGENT_LAB.md
@@ -23,7 +26,28 @@
 ./docs/subagents/RTSP_AGENT.md
 ./docs/subagents/TECHNICIAN_AGENT.md
 ./FILE_MANIFEST.txt
+./frontend/.dockerignore
+./frontend/.gitignore
+./frontend/.oxlintrc.json
+./frontend/Dockerfile
+./frontend/docs/COMPONENT_INVENTORY.md
+./frontend/docs/SCREENSHOT_INVENTORY.md
 ./frontend/FRONTEND_BUILD_PROMPT.md
+./frontend/index.html
+./frontend/nginx.conf
+./frontend/package.json
+./frontend/package-lock.json
+./frontend/README.md
+./frontend/src/api.ts
+./frontend/src/App.css
+./frontend/src/App.tsx
+./frontend/src/index.css
+./frontend/src/main.tsx
+./frontend/src/types.ts
+./frontend/tsconfig.app.json
+./frontend/tsconfig.json
+./frontend/tsconfig.node.json
+./frontend/vite.config.ts
 ./FRONTEND_AGENT_PROMPT.md
 ./INSTALL_AND_PYTHON_CRASH_COURSE.md
 ./legacy/AGENTS_v03.md
@@ -73,6 +97,7 @@
 ./services/helpdesk/__init__.py
 ./services/helpdesk/app.py
 ./services/helpdesk/Dockerfile
+./services/helpdesk/ticket_chat.py
 ./services/portal/__init__.py
 ./services/portal/app.py
 ./services/portal/Dockerfile
@@ -84,3 +109,4 @@
 ./tests/test_portal_api.py
 ./tests/test_sanity.py
 ./tests/test_specialists.py
+./tests/test_ticket_chat.py

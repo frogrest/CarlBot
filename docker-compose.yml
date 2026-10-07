@@ -5,8 +5,11 @@ services:
       dockerfile: services/helpdesk/Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      TICKET_REFERENCE_CSV: "/app/reference/ticketreference examples.csv"
     volumes:
       - ./data:/app/data
+      - ./reference:/app/reference:ro
     restart: unless-stopped
 
   portal:
@@ -35,4 +38,16 @@ services:
     depends_on:
       - helpdesk
       - portal
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8003:80"
+    depends_on:
+      - helpdesk
+      - portal
+      - agent
     restart: unless-stopped

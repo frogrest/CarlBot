@@ -8,6 +8,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from services.helpdesk.ticket_chat import query_tickets
+
 app = FastAPI(title='Fake Helpdesk', version='0.2.0')
 
 SCHEMA = '''
@@ -70,6 +72,10 @@ class TicketUpdate(BaseModel):
 class NoteCreate(BaseModel):
     author: str
     body: str = Field(min_length=1)
+
+
+class TicketChatQuery(BaseModel):
+    message: str = Field(min_length=1, max_length=500)
 
 
 def utc_now() -> str:
@@ -193,6 +199,29 @@ def search(q: str, asset_id: Optional[str] = None, limit: int = 10):
     rows = con.execute(query, params).fetchall()
     con.close()
     return {'results': [dict(r) for r in rows]}
+
+
+@app.post('/api/chat/query')
+def chat_query(payload: TicketChatQuery):
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(422, 'Message must not be blank')
+
+    con = connect()
+    try:
+        tickets = [dict(row) for row in con.execute(
+            'SELECT * FROM tickets ORDER BY updated_at DESC'
+        ).fetchall()]
+        for ticket in tickets:
+            notes = con.execute(
+                'SELECT author,body,created_at FROM notes WHERE ticket_id=? ORDER BY id',
+                (ticket['id'],),
+            ).fetchall()
+            ticket['notes'] = [dict(note) for note in notes]
+    finally:
+        con.close()
+
+    return query_tickets(message, tickets)
 
 
 @app.patch('/api/tickets/{ticket_id}')

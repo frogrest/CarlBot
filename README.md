@@ -28,6 +28,7 @@ The original prototype ran one diagnosis and exited. v0.2 turns it into a **pers
 | Helpdesk | http://localhost:8000 | Tickets, notes, history, technician workflow |
 | Portal | http://localhost:8001 | Fake cameras, NVR, AI Box, telemetry, fault injection |
 | Agent | http://localhost:8002 | Continuous autonomous monitor + diagnostic worker |
+| Frontend | http://localhost:8003 | Synthetic ticket queue, ticket detail, copilot and lab inventory |
 
 FastAPI interactive docs are available at `/docs` on all three services.
 
@@ -59,6 +60,7 @@ To reset persisted helpdesk/agent state for a fresh lab, stop the stack and remo
 
 Open:
 
+- Helpdesk workspace: http://localhost:8003
 - Helpdesk: http://localhost:8000
 - Portal: http://localhost:8001
 - Agent: http://localhost:8002
@@ -71,6 +73,7 @@ POST /api/monitor/run               (agent)
 POST /api/tickets/{id}/run          (agent)
 GET  /api/tickets                   (helpdesk)
 GET  /api/tickets/{id}              (helpdesk)
+POST /api/chat/query                (read-only ticket lookup)
 POST /api/tickets/{id}/notes        (helpdesk)
 POST /api/tickets/{id}/request-verification (helpdesk)
 GET  /api/assets                    (portal)
@@ -78,6 +81,12 @@ GET  /api/events                    (portal)
 POST /api/simulate/fault            (portal)
 POST /api/assets/{id}/actions/reset-simulation (portal)
 ```
+
+The ticket lookup chat searches live Helpdesk records and, when present, the
+local `reference/ticketreference examples.csv` export. That export is
+git-ignored, mounted read-only, and is not required to run the lab. It contains
+metadata only; lookup replies do not expose sender email addresses. The chat
+does not use an LLM API key and cannot change tickets or run investigations.
 
 ## End-to-end autonomous test
 
