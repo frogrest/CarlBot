@@ -40,7 +40,7 @@ The included lab (services at version 0.2.0) already contains:
 - Tests
 - Docker Compose runtime
 
-The multi-agent orchestrator, specialized agents, screenshot-driven frontend replica (operative prompt: `frontend/FRONTEND_BUILD_PROMPT.md`), and full chatbot UI are the next architectural layer. The documentation in this package tells an AI coding agent how to add them without breaking the safe emulator boundary.
+The multi-agent orchestrator is scaffolded (Phase 2, validation pending — see `NEXT_AGENT_BRIEF.md` Progress log): `services/agent/orchestrator/` (state machine `IncidentStore`/`StateMachine`, evidence router, budgets, engine run-loop), `services/agent/policy/` (permission engine + audit log), `services/agent/tools/` (ToolBus), wired into `services/agent/main.py` (`build_orchestrator()`, `process_ticket()`, `GET /api/incidents/{ticket_id}`), with `tests/test_orchestrator.py` (8 tests). Still ahead: specialized agents, screenshot-driven frontend replica (operative prompt: `frontend/FRONTEND_BUILD_PROMPT.md`), and full chatbot UI. The documentation in this package tells an AI coding agent how to add them without breaking the safe emulator boundary.
 
 ## Safety rule
 

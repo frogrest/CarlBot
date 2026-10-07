@@ -1,28 +1,19 @@
-# FILE MANIFEST — AI Helpdesk Agent Package
-# Regenerated manually 2026-10-06 (the previous manifest listed two .jpg files that
-# do not exist on disk; the actual reference is reference/screenshots/reference.pdf).
-# After the first `git add`, reconcile with `git ls-files`.
+﻿# FILE MANIFEST — AI Helpdesk Agent Package
+# Generated from git ls-files --cached --others --exclude-standard.
+# Screenshot reference is reference/screenshots/reference.pdf.
+
 ./.gitignore
 ./AGENTS.md
 ./AUTONOMOUS_AGENT_LAB.md
-./FILE_MANIFEST.txt
-./FRONTEND_AGENT_PROMPT.md
-./INSTALL_AND_PYTHON_CRASH_COURSE.md
-./NEXT_AGENT_BRIEF.md
-./ONE_SHOT_BUILD_PROMPT.md
-./PROJECT_INDEX.md
-./PROJECT_WORKFLOW.md
-./README.md
-./SETUP_AND_DEVELOPMENT.md
 ./data/.gitkeep
 ./docker-compose.yml
-./docs/README.md
 ./docs/architecture/ARCHITECTURE.md
 ./docs/architecture/KNOWLEDGE_SYSTEM.md
 ./docs/architecture/ORCHESTRATOR.md
 ./docs/architecture/SAFETY_POLICY.md
 ./docs/frontend/CHATBOT_SPEC.md
 ./docs/frontend/HELPDESK_REPLICATION.md
+./docs/README.md
 ./docs/subagents/AIBOX_AGENT.md
 ./docs/subagents/CAMERA_NVR_AGENT.md
 ./docs/subagents/EVIDENCE_AGENT.md
@@ -31,12 +22,19 @@
 ./docs/subagents/NETWORK_AGENT.md
 ./docs/subagents/RTSP_AGENT.md
 ./docs/subagents/TECHNICIAN_AGENT.md
+./FILE_MANIFEST.txt
 ./frontend/FRONTEND_BUILD_PROMPT.md
+./FRONTEND_AGENT_PROMPT.md
+./INSTALL_AND_PYTHON_CRASH_COURSE.md
 ./legacy/AGENTS_v03.md
 ./legacy/AI_OPS_LAB_ONE_SHOT_PROMPT.txt
 ./legacy/AUTONOMOUS_AGENT_LAB_v03.md
 ./legacy/README_v03.md
 ./legacy/SETUP_AND_DEVELOPMENT_v03.md
+./NEXT_AGENT_BRIEF.md
+./ONE_SHOT_BUILD_PROMPT.md
+./PROJECT_INDEX.md
+./PROJECT_WORKFLOW.md
 ./prompts/aibox_agent.md
 ./prompts/camera_nvr_agent.md
 ./prompts/evidence_agent.md
@@ -47,20 +45,39 @@
 ./prompts/rtsp_agent.md
 ./prompts/specialist_common.md
 ./prompts/technician_agent.md
+./README.md
 ./reference/README.md
 ./reference/screenshots/reference.pdf
 ./requirements.txt
 ./scripts/connect_github.ps1
+./scripts/phase0_bootstrap.ps1
 ./services/__init__.py
-./services/agent/Dockerfile
 ./services/agent/__init__.py
 ./services/agent/core.py
+./services/agent/Dockerfile
 ./services/agent/knowledge.py
 ./services/agent/main.py
-./services/helpdesk/Dockerfile
+./services/agent/orchestrator/__init__.py
+./services/agent/orchestrator/budgets.py
+./services/agent/orchestrator/engine.py
+./services/agent/orchestrator/models.py
+./services/agent/orchestrator/router.py
+./services/agent/orchestrator/state.py
+./services/agent/policy/__init__.py
+./services/agent/policy/audit.py
+./services/agent/policy/engine.py
+./services/agent/tools/__init__.py
+./services/agent/tools/bus.py
 ./services/helpdesk/__init__.py
 ./services/helpdesk/app.py
-./services/portal/Dockerfile
+./services/helpdesk/Dockerfile
 ./services/portal/__init__.py
 ./services/portal/app.py
+./services/portal/Dockerfile
+./SETUP_AND_DEVELOPMENT.md
+./tests/conftest.py
+./tests/test_helpdesk_api.py
+./tests/test_monitor_dedup.py
+./tests/test_orchestrator.py
+./tests/test_portal_api.py
 ./tests/test_sanity.py

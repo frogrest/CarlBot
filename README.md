@@ -255,7 +255,7 @@ uvicorn services.portal.app:app --port 8001
 python -m services.agent.main
 ```
 
-For local non-Docker execution, the agent uses the defaults `http://localhost:8000`, `http://localhost:8001` and stores its state under `./data` when `AGENT_DB` is set accordingly.
+For local non-Docker execution, the agent uses the defaults `http://localhost:8000`, `http://localhost:8001` and stores its state under `./data` when `AGENT_DB` is set accordingly. The helpdesk resolves its database path from `HELPDESK_DB` (default `/app/data/helpdesk.db`) — set it to `./data/helpdesk.db` when running outside Docker.
 
 ## Roadmap
 

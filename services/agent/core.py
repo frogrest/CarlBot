@@ -56,8 +56,20 @@ class Agent:
     def site_assets(self, site_id: str):
         return self.client.get(f'{self.portal}/api/site/{site_id}/assets').raise_for_status().json()['assets']
 
+    # -- adapter surface for core.Agent delegation (Phase 3 owns the rest) --
     def allowed_auto_action(self, action: str) -> bool:
         return action in self.AUTO_ACTIONS
+
+    def history_search(self, query: str, asset_id: str = ''):
+        return self.client.get(f'{self.helpdesk}/api/search', params={'q': query, 'asset_id': asset_id}).raise_for_status().json()['results']
+
+    def doc_search(self, query: str):
+        return self.kb.search(query, limit=3)
+
+    def execute_action(self, action: str, asset_id: str):
+        if not self.allowed_auto_action(action):
+            raise ValueError(f'tool bus refuses unregistered action: {action}')
+        return self._auto_action(asset_id, action)
 
     def _auto_action(self, asset: str, action: str):
         endpoint = {

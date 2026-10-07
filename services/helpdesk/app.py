@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import sqlite3
 from datetime import datetime, timezone
@@ -7,7 +8,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-DB = Path('/app/data/helpdesk.db')
 app = FastAPI(title='Fake Helpdesk', version='0.2.0')
 
 SCHEMA = '''
@@ -76,9 +76,15 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def db_path() -> Path:
+    """Resolve the SQLite path per call so tests can point at a temp file."""
+    return Path(os.getenv('HELPDESK_DB', '/app/data/helpdesk.db'))
+
+
 def connect() -> sqlite3.Connection:
-    DB.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
+    path = db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(path)
     con.row_factory = sqlite3.Row
     return con
 
