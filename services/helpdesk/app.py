@@ -4,13 +4,22 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from services.helpdesk.ticket_chat import query_tickets
 
-app = FastAPI(title='Fake Helpdesk', version='0.2.0')
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title='Fake Helpdesk', version='0.2.0', lifespan=lifespan)
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS tickets (
@@ -115,11 +124,6 @@ def init_db() -> None:
         )
     con.commit()
     con.close()
-
-
-@app.on_event('startup')
-def startup() -> None:
-    init_db()
 
 
 @app.get('/', response_class=HTMLResponse)

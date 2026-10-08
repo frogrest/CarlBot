@@ -2,13 +2,13 @@ import os
 import sqlite3
 import threading
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
-
 from .core import Agent
 from .orchestrator import Budget, IncidentState, IncidentStore, Orchestrator
 from .policy import AuditLog, PolicyEngine
@@ -26,6 +26,24 @@ stop_event = threading.Event()
 worker_thread: threading.Thread | None = None
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global worker_thread
+    init_db()
+    worker_thread = threading.Thread(target=worker, daemon=True)
+    worker_thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        if worker_thread:
+            worker_thread.join(timeout=2)
+        agent.close()
+
+
+app.router.lifespan_context = lifespan
+
+
 def build_orchestrator() -> Orchestrator:
     """Assemble the Phase 2 stack on the shared paths (tests inject their own)."""
     store = IncidentStore(AGENT_DB)
@@ -35,6 +53,21 @@ def build_orchestrator() -> Orchestrator:
         policy=PolicyEngine(),
         audit=AuditLog(AGENT_DB),
     )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global worker_thread
+    init_db()
+    worker_thread = threading.Thread(target=worker, daemon=True)
+    worker_thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        if worker_thread:
+            worker_thread.join(timeout=2)
+        agent.close()
 
 
 def connect():
@@ -203,22 +236,6 @@ def worker():
         except Exception as exc:
             print(f'[worker] loop error: {exc}', flush=True)
         stop_event.wait(POLL_INTERVAL)
-
-
-@app.on_event('startup')
-def startup():
-    global worker_thread
-    init_db()
-    worker_thread = threading.Thread(target=worker, daemon=True)
-    worker_thread.start()
-
-
-@app.on_event('shutdown')
-def shutdown():
-    stop_event.set()
-    if worker_thread:
-        worker_thread.join(timeout=2)
-    agent.close()
 
 
 @app.get('/', response_class=HTMLResponse)
