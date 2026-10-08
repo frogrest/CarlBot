@@ -41,7 +41,7 @@ class ChatRecommendation(BaseModel):
 class ChatReply(BaseModel):
     model_config = ConfigDict(extra='forbid', strict=True)
 
-    answer: str = Field(min_length=1, max_length=1600)
+    answer: str = Field(min_length=1, max_length=4000)
     recommendations: list[ChatRecommendation] = Field(default_factory=list, max_length=4)
     cited_ticket_ids: list[str] = Field(default_factory=list, max_length=10)
     cited_knowledge_sources: list[str] = Field(default_factory=list, max_length=4)
@@ -182,10 +182,13 @@ def _deterministic_reply(
 
     answer = result.get('answer', '')
     if cited_docs and not any(doc.split()[0] in answer for doc in cited_docs):
-        # Mention cited documentation in deterministic answer if helpful
-        doc_names = ', '.join(doc['section_title'] for doc in knowledge_sources[:2])
-        if doc_names:
-            answer = f"{answer} (Referenced approved documentation: {doc_names}.)"
+        if len(result.get('matches', [])) <= 1:
+            doc_bullets = [
+                f"• *{doc['section_title']}* (`{doc['source_path']}`)"
+                for doc in knowledge_sources[:2]
+            ]
+            if doc_bullets:
+                answer = f"{answer}\n\n**Approved SOP & Technical References:**\n" + "\n".join(doc_bullets)
 
     recommendations = []
     if not (is_conversational and intent in {'greeting', 'off_topic'}):
