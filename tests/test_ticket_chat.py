@@ -99,6 +99,18 @@ def test_chat_reads_live_closed_ticket_notes(helpdesk, monkeypatch, tmp_path):
     assert 'Closed.' in result['answer']
 
 
+def test_chat_filters_by_answered_status_and_named_site(helpdesk):
+    response = helpdesk.post('/api/chat/query', json={
+        'message': "Show answered tickets at Freddy Fazbear's.",
+    })
+
+    assert response.status_code == 200
+    matches = response.json()['matches']
+    assert matches
+    assert all(match['ticket_status'] == 'Answered' for match in matches)
+    assert all(match['site_id'] == "Freddy Fazbear's" for match in matches)
+
+
 def test_chat_can_return_a_ticket_subject_when_asked_for_it(helpdesk):
     response = helpdesk.post('/api/chat/query', json={
         'message': 'What is the subject of ticket 1002?',
@@ -110,6 +122,37 @@ def test_chat_can_return_a_ticket_subject_when_asked_for_it(helpdesk):
     assert result['matches'][0]['ticket_id'] == '1002'
     assert result['matches'][0]['title'] == 'CAM-018 RTSP failure'
     assert 'CAM-018 RTSP failure' in result['answer']
+
+
+def test_chat_uses_selected_ticket_conversation_even_when_question_is_broad(helpdesk):
+    ticket_id = 1002
+    helpdesk.post(
+        f'/api/tickets/{ticket_id}/notes',
+        json={'author': 'technician', 'body': 'Second inspection confirmed stream is stable.'},
+    )
+
+    response = helpdesk.post('/api/chat/query', json={
+        'message': 'What should we do next?',
+        'ticket_id': ticket_id,
+    })
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result['matches'][0]['ticket_id'] == str(ticket_id)
+    assert 'RTSP username/password was wrong.' in result['matches'][0]['details']
+    assert 'Second inspection confirmed stream is stable.' in result['matches'][0]['details']
+    assert result['cited_ticket_ids'] == [str(ticket_id)]
+    assert result['reasoning_mode'] == 'deterministic'
+    assert result['recommendations'][0]['category'] == 'check'
+
+
+def test_chat_rejects_unknown_selected_ticket(helpdesk):
+    response = helpdesk.post('/api/chat/query', json={
+        'message': 'What happened?',
+        'ticket_id': 999999,
+    })
+
+    assert response.status_code == 404
 
 
 def test_chat_closed_search_does_not_treat_open_export_rows_as_closed(helpdesk, monkeypatch, tmp_path):

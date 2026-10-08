@@ -1,4 +1,4 @@
-import type { AgentStatus, Asset, Ticket } from './types'
+import type { AgentStatus, Asset, Ticket, TicketDeskStatus } from './types'
 
 export interface DiagnosticProbe {
   name: string
@@ -10,6 +10,7 @@ export interface TicketChatMatch {
   ticket_id: string
   title: string
   status: string
+  ticket_status?: 'Open' | 'Answered' | 'Closed'
   priority: string
   site_id: string
   asset_id: string
@@ -19,9 +20,18 @@ export interface TicketChatMatch {
   details: string[]
 }
 
+export interface TicketChatRecommendation {
+  category: 'check' | 'technician' | 'investigate'
+  instruction: string
+  ticket_ids: string[]
+}
+
 export interface TicketChatResponse {
   answer: string
   matches: TicketChatMatch[]
+  recommendations: TicketChatRecommendation[]
+  cited_ticket_ids: string[]
+  reasoning_mode: 'llm' | 'deterministic'
   reference_export_available: boolean
 }
 
@@ -51,10 +61,17 @@ export function getTicket(ticketId: number): Promise<Ticket> {
   return requestJson<Ticket>(`/helpdesk/api/tickets/${ticketId}`)
 }
 
-export function queryTickets(message: string): Promise<TicketChatResponse> {
+export function updateTicketDeskStatus(ticketId: number, ticketStatus: TicketDeskStatus): Promise<Ticket> {
+  return requestJson<Ticket>(`/helpdesk/api/tickets/${ticketId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ticket_status: ticketStatus }),
+  })
+}
+
+export function queryTickets(message: string, ticketId: number | null): Promise<TicketChatResponse> {
   return requestJson<TicketChatResponse>('/helpdesk/api/chat/query', {
     method: 'POST',
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, ticket_id: ticketId }),
   })
 }
 

@@ -33,19 +33,23 @@ Open <http://localhost:8003>.
 
 ## Implemented interactions
 
-- Search/filter synthetic helpdesk tickets and open their detail records.
+- Browse 25 varied synthetic tickets across SITE-104, Freddy Fazbear's,
+  Centerpark Tower 1 and Pacman.
+- Filter by Open, Answered or Closed status, site and priority; change a
+  ticket's helpdesk status from its detail view.
 - Add technician notes to the simulated helpdesk.
 - Run portal health, ping, TCP/554 and RTSP probes from a ticket.
 - Request an investigation from the backend agent; the backend policy engine
   remains authoritative for every automatic action.
 - Inspect site assets and inject/reset simulated faults.
+- Ask CarlBot about ticket fields and recorded conversation notes, follow
+  cited ticket links, and review advice-only next steps. New messages scroll
+  into view while the message history remains scrollable. The chat stays in
+  the right sidebar on both the queue and ticket-detail views.
 - Use `/clear` in the chat shell to clear only local conversation state.
 
-The chat responder is not implemented in the backend yet. The UI says so
-explicitly rather than presenting a fabricated model response. Physical work,
-credentials, network configuration and other consequential changes remain
-technician-controlled. A technician verification-request button is also
-withheld for now: the current helpdesk endpoint updates ticket status but does
-not set the agent's `verify_requested` state expected by its worker. Resolve
-that backend workflow before exposing the button. No production systems are
-contacted.
+The three user-facing ticket statuses are stored separately from the agent's
+operational workflow state so helpdesk status changes cannot skip policy-gated
+investigation or verification. Physical work, credentials, network
+configuration and other consequential changes remain technician-controlled.
+No production systems are contacted.

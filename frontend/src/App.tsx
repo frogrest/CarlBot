@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import {
   addTicketNote,
   getAgentStatus,
@@ -10,9 +10,10 @@ import {
   resetSimulation,
   runInvestigation,
   simulateFault,
+  updateTicketDeskStatus,
 } from './api'
-import type { DiagnosticProbe, TicketChatMatch } from './api'
-import type { AgentStatus, Asset, Ticket, TicketStatus } from './types'
+import type { DiagnosticProbe, TicketChatMatch, TicketChatRecommendation } from './api'
+import type { AgentStatus, Asset, Ticket, TicketDeskStatus, TicketStatus } from './types'
 import './App.css'
 
 type View = 'tickets' | 'assets'
@@ -27,6 +28,14 @@ const statusLabels: Record<TicketStatus, string> = {
   resolved: 'Resolved',
   closed: 'Closed',
 }
+const ticketDeskStatuses: TicketDeskStatus[] = ['Open', 'Answered', 'Closed']
+
+function deskStatus(ticket: Ticket): TicketDeskStatus {
+  if (ticket.ticket_status) return ticket.ticket_status
+  if (ticket.status === 'closed') return 'Closed'
+  if (ticket.status === 'resolved' || ticket.status === 'ready_for_verification') return 'Answered'
+  return 'Open'
+}
 
 const faultOptions = [
   { value: 'rtsp_down', label: 'RTSP stream unavailable' },
@@ -40,6 +49,9 @@ type ChatMessage = {
   role: 'user' | 'assistant'
   text: string
   matches?: TicketChatMatch[]
+  recommendations?: TicketChatRecommendation[]
+  citedTicketIds?: string[]
+  reasoningMode?: 'llm' | 'deterministic'
 }
 
 function ticketIdFromLocation(): number | null {
@@ -70,8 +82,9 @@ function formatDate(value: string): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const knownStatus = status in statusLabels ? statusLabels[status as TicketStatus] : status
-  return <span className={`status-badge status-${status}`}>{knownStatus.replaceAll('_', ' ')}</span>
+  const normalized = status.toLowerCase()
+  const knownStatus = statusLabels[status as TicketStatus] ?? ticketDeskStatuses.find((label) => label.toLowerCase() === normalized) ?? status
+  return <span className={`status-badge status-${normalized.replaceAll(' ', '_')}`}>{knownStatus.replaceAll('_', ' ')}</span>
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
@@ -105,19 +118,27 @@ function App() {
   const [detailLoadedTicketId, setDetailLoadedTicketId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [siteFilter, setSiteFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [refreshKey, setRefreshKey] = useState(0)
   const [notice, setNotice] = useState('')
   const [noteDraft, setNoteDraft] = useState('')
   const [isSavingNote, setIsSavingNote] = useState(false)
+  const [isSavingTicketStatus, setIsSavingTicketStatus] = useState(false)
   const [isRunning, setIsRunning] = useState(false)
   const [faultByAsset, setFaultByAsset] = useState<Record<string, string>>({})
   const [isChangingLabState, setIsChangingLabState] = useState<string | null>(null)
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', text: 'Hi, I can look up tickets and summarize what’s recorded. Try asking about a site, camera, or ticket number.' },
+    { role: 'assistant', text: 'Hi, I can reason from ticket details and recorded conversation, suggest next steps, and link the records I used. Ask about a site, camera, or ticket number.' },
   ])
   const [isChatLoading, setIsChatLoading] = useState(false)
+  const chatMessagesRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const container = chatMessagesRef.current
+    if (container) container.scrollTop = container.scrollHeight
+  }, [chatMessages, isChatLoading])
 
   const refreshWorkspace = useCallback(async () => {
     const [ticketResult, assetResult, agentResult] = await Promise.allSettled([
@@ -206,12 +227,12 @@ function App() {
         !term ||
         [ticket.id, ticket.title, ticket.description, ticket.site_id, ticket.asset_id]
           .some((value) => String(value).toLowerCase().includes(term))
-      const matchesStatus = statusFilter === 'all' ||
-        (statusFilter === 'active' ? !['resolved', 'closed'].includes(ticket.status) : ticket.status === statusFilter)
+      const matchesStatus = statusFilter === 'all' || deskStatus(ticket) === statusFilter
+      const matchesSite = siteFilter === 'all' || ticket.site_id === siteFilter
       const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter
-      return matchesSearch && matchesStatus && matchesPriority
+      return matchesSearch && matchesStatus && matchesSite && matchesPriority
     })
-  }, [tickets, search, statusFilter, priorityFilter])
+  }, [tickets, search, statusFilter, siteFilter, priorityFilter])
 
   const selectedTicket =
     selectedTicketId === null
@@ -220,7 +241,10 @@ function App() {
         ? ticketDetail
         : tickets.find((ticket) => ticket.id === selectedTicketId) ?? null
   const isDetailLoading = selectedTicketId !== null && detailLoadedTicketId !== selectedTicketId
-  const openCount = tickets.filter((ticket) => !['resolved', 'closed'].includes(ticket.status)).length
+  const openCount = tickets.filter((ticket) => deskStatus(ticket) === 'Open').length
+  const answeredCount = tickets.filter((ticket) => deskStatus(ticket) === 'Answered').length
+  const closedCount = tickets.filter((ticket) => deskStatus(ticket) === 'Closed').length
+  const siteOptions = [...new Set(tickets.map((ticket) => ticket.site_id))].sort()
   const ticketRuns = agentStatus?.recent_runs.filter((run) => run.ticket_id === selectedTicketId) ?? []
   const latestRun = ticketRuns[0]
   const ticketError = serviceErrors.helpdesk
@@ -256,6 +280,21 @@ function App() {
       setNotice(`Note was not saved: ${error instanceof Error ? error.message : 'Helpdesk service error'}`)
     } finally {
       setIsSavingNote(false)
+    }
+  }
+
+  async function handleTicketStatusChange(ticketStatus: TicketDeskStatus) {
+    if (!selectedTicketId) return
+    setIsSavingTicketStatus(true)
+    try {
+      await updateTicketDeskStatus(selectedTicketId, ticketStatus)
+      setNotice(`Ticket status changed to ${ticketStatus}.`)
+      setRefreshKey((key) => key + 1)
+      await refreshWorkspace()
+    } catch (error) {
+      setNotice(`Ticket status was not changed: ${error instanceof Error ? error.message : 'Helpdesk service error'}`)
+    } finally {
+      setIsSavingTicketStatus(false)
     }
   }
 
@@ -303,11 +342,14 @@ function App() {
     setChatMessages((messages) => [...messages, { role: 'user', text: message }])
     setIsChatLoading(true)
     try {
-      const result = await queryTickets(message)
+      const result = await queryTickets(message, selectedTicketId)
       setChatMessages((messages) => [...messages, {
         role: 'assistant',
         text: result.answer,
         matches: result.matches,
+        recommendations: result.recommendations,
+        citedTicketIds: result.cited_ticket_ids,
+        reasoningMode: result.reasoning_mode,
       }])
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Helpdesk service error'
@@ -339,6 +381,19 @@ function App() {
 
   const activeError = view === 'tickets' ? ticketError : serviceErrors.portal
 
+  const ticketChat = (
+    <TicketLookupChat
+      chatMessages={chatMessages}
+      chatDraft={chatDraft}
+      isLoading={isChatLoading}
+      messagesRef={chatMessagesRef}
+      selectedTicketId={selectedTicketId}
+      setChatDraft={setChatDraft}
+      onChat={handleChat}
+      onOpenTicket={selectTicket}
+    />
+  )
+
   return (
     <div className="app-shell">
       <header className="brand-header">
@@ -349,7 +404,7 @@ function App() {
             <div className="brand-caption">TECHNICAL OPERATIONS DESK</div>
           </div>
         </div>
-        <div className="header-center"><span className="environment-tag"><span /> SIMULATED LAB</span></div>
+        <div className="header-center"><span className="environment-tag"><span /> MULTI-SITE SIMULATED LAB</span></div>
         <div className="header-account">
           <span className="header-operator">Technician workspace</span>
           <span className="operator-avatar">T</span>
@@ -364,14 +419,15 @@ function App() {
         <button className="nav-item nav-disabled" type="button" disabled title="Not available in this preview"><span className="nav-glyph">▧</span>Knowledge</button>
         <span className="nav-spacer" />
         <span className="nav-section-label">WORKSPACE</span>
-        <span className="nav-user">SITE-104 · North campus</span>
+        <span className="nav-user">{siteOptions.length} emulated sites</span>
       </nav>
 
       <div className="ticket-toolbar">
         <div className="toolbar-links">
-          <button className={view === 'tickets' && statusFilter === 'active' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('active') }} type="button">Open Tickets <span>{openCount}</span></button>
+          <button className={view === 'tickets' && statusFilter === 'Open' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('Open') }} type="button">Open <span>{openCount}</span></button>
+          <button className={view === 'tickets' && statusFilter === 'Answered' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('Answered') }} type="button">Answered <span>{answeredCount}</span></button>
+          <button className={view === 'tickets' && statusFilter === 'Closed' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('Closed') }} type="button">Closed <span>{closedCount}</span></button>
           <button className={view === 'tickets' && statusFilter === 'all' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('all') }} type="button">All Tickets</button>
-          <button className={view === 'tickets' && statusFilter === 'closed' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('closed') }} type="button">Closed</button>
           <button onClick={() => setView('assets')} type="button">Asset Inventory</button>
         </div>
         <div className="toolbar-status">
@@ -393,6 +449,9 @@ function App() {
                 setSearch={setSearch}
                 statusFilter={statusFilter}
                 setStatusFilter={setStatusFilter}
+                siteFilter={siteFilter}
+                setSiteFilter={setSiteFilter}
+                siteOptions={siteOptions}
                 priorityFilter={priorityFilter}
                 setPriorityFilter={setPriorityFilter}
                 isLoading={isLoading}
@@ -402,6 +461,7 @@ function App() {
               />
             ) : selectedTicket ? (
               <TicketDetail
+                key={selectedTicket.id}
                 ticket={selectedTicket}
                 asset={assets.find((asset) => asset.asset_id === selectedTicket.asset_id)}
                 loading={isDetailLoading}
@@ -412,6 +472,9 @@ function App() {
                 setNoteDraft={setNoteDraft}
                 onSubmitNote={handleAddNote}
                 isSavingNote={isSavingNote}
+                onStatusChange={(status) => void handleTicketStatusChange(status)}
+                isSavingStatus={isSavingTicketStatus}
+                chatPanel={ticketChat}
                 onRun={handleInvestigation}
                 isRunning={isRunning}
                 onBack={returnToQueue}
@@ -419,14 +482,7 @@ function App() {
             ) : (
               <div className="state-panel"><div className={detailError ? 'state-symbol' : 'loading-spinner'}>{detailError ? '!' : null}</div><h2>{detailError ? 'Ticket details unavailable' : 'Loading ticket details'}</h2><p>{detailError || 'Fetching the full helpdesk record…'}</p><button className="button button-outline" type="button" onClick={() => setRefreshKey((key) => key + 1)}>Try again</button></div>
             )}
-            <TicketLookupChat
-              chatMessages={chatMessages}
-              chatDraft={chatDraft}
-              isLoading={isChatLoading}
-              setChatDraft={setChatDraft}
-              onChat={handleChat}
-              onOpenTicket={selectTicket}
-            />
+            {selectedTicketId === null && ticketChat}
           </section>
         ) : (
           <AssetInventory
@@ -456,6 +512,9 @@ interface TicketQueueProps {
   setSearch: (value: string) => void
   statusFilter: string
   setStatusFilter: (value: string) => void
+  siteFilter: string
+  setSiteFilter: (value: string) => void
+  siteOptions: string[]
   priorityFilter: string
   setPriorityFilter: (value: string) => void
   isLoading: boolean
@@ -465,7 +524,8 @@ interface TicketQueueProps {
 }
 
 function TicketQueue({
-  tickets, search, setSearch, statusFilter, setStatusFilter, priorityFilter,
+  tickets, search, setSearch, statusFilter, setStatusFilter, siteFilter, setSiteFilter,
+  siteOptions, priorityFilter,
   setPriorityFilter, isLoading, error, onSelect, onRefresh,
 }: TicketQueueProps) {
   return (
@@ -474,7 +534,7 @@ function TicketQueue({
         <div>
           <div className="eyebrow"><span className="eyebrow-dot" /> SERVICE DESK / QUEUE</div>
           <h1 id="queue-title">Ticket queue</h1>
-          <p>Review active incidents and technician handoffs across the emulated lab.</p>
+          <p>Review synthetic incidents across multiple emulated sites.</p>
         </div>
         <button className="button button-outline" type="button" onClick={onRefresh}><span className="button-icon">↻</span> Refresh queue</button>
       </div>
@@ -488,8 +548,14 @@ function TicketQueue({
           <span>Status</span>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} aria-label="Filter by status">
             <option value="all">All statuses</option>
-            <option value="active">Active tickets</option>
-            {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {ticketDeskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        </label>
+        <label className="filter-control">
+          <span>Site</span>
+          <select value={siteFilter} onChange={(event) => setSiteFilter(event.target.value)} aria-label="Filter by site">
+            <option value="all">All sites</option>
+            {siteOptions.map((site) => <option key={site} value={site}>{site}</option>)}
           </select>
         </label>
         <label className="filter-control">
@@ -526,7 +592,7 @@ function TicketQueue({
                   <td className="check-column"><input type="checkbox" aria-label={`Select ticket ${ticket.id}`} onClick={(event) => event.stopPropagation()} /></td>
                   <td className="ticket-number">#{ticket.id}</td>
                   <td className="subject-cell"><button type="button" onClick={(event) => { event.stopPropagation(); onSelect(ticket.id) }}>{ticket.title}</button><small>{ticket.description}</small></td>
-                  <td><StatusBadge status={ticket.status} /></td>
+                  <td><StatusBadge status={deskStatus(ticket)} /></td>
                   <td><PriorityBadge priority={ticket.priority} /></td>
                   <td><span className="site-cell">{ticket.site_id}</span><small className="asset-subtext">{ticket.asset_id}</small></td>
                   <td><AiState state={ticket.ai_state} /></td>
@@ -562,6 +628,9 @@ interface TicketDetailProps {
   setNoteDraft: (value: string) => void
   onSubmitNote: (event: FormEvent<HTMLFormElement>) => void
   isSavingNote: boolean
+  onStatusChange: (status: TicketDeskStatus) => void
+  isSavingStatus: boolean
+  chatPanel: ReactNode
   onRun: () => void
   isRunning: boolean
   onBack: () => void
@@ -569,7 +638,7 @@ interface TicketDetailProps {
 
 function TicketDetail({
   ticket, asset, loading, error, latestRun, agentError, noteDraft, setNoteDraft,
-  onSubmitNote, isSavingNote, onRun, isRunning, onBack,
+  onSubmitNote, isSavingNote, onStatusChange, isSavingStatus, chatPanel, onRun, isRunning, onBack,
 }: TicketDetailProps) {
   const handoff = ticket.status === 'pending_technician' || ticket.ai_state === 'awaiting_technician'
   const handoffInstruction = [...(ticket.notes ?? [])]
@@ -582,6 +651,7 @@ function TicketDetail({
   const [probeResults, setProbeResults] = useState<DiagnosticProbe[] | null>(null)
   const [isProbing, setIsProbing] = useState(false)
   const [probedAt, setProbedAt] = useState('')
+  const [ticketStatusDraft, setTicketStatusDraft] = useState<TicketDeskStatus>(() => deskStatus(ticket))
 
   async function handleRunDiagnostics() {
     if (!asset) return
@@ -601,7 +671,32 @@ function TicketDetail({
         <div>
           <div className="eyebrow"><span className="eyebrow-dot" /> INCIDENT RECORD · {ticket.site_id}</div>
           <h1>{ticket.title}</h1>
-          <div className="detail-title-meta"><span className="ticket-number">#{ticket.id}</span><StatusBadge status={ticket.status} /><PriorityBadge priority={ticket.priority} /></div>
+          <div className="detail-title-meta">
+            <span className="ticket-number">#{ticket.id}</span>
+            <StatusBadge status={deskStatus(ticket)} />
+            <PriorityBadge priority={ticket.priority} />
+            <label className="ticket-status-control">
+              <span>Ticket status</span>
+              <select
+                value={ticketStatusDraft}
+                onChange={(event) => setTicketStatusDraft(event.target.value as TicketDeskStatus)}
+                disabled={isSavingStatus}
+                aria-label="Change ticket status"
+              >
+                {ticketDeskStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+              </select>
+            </label>
+            {ticketStatusDraft !== deskStatus(ticket) && (
+              <button
+                className="button button-outline button-small"
+                type="button"
+                disabled={isSavingStatus}
+                onClick={() => onStatusChange(ticketStatusDraft)}
+              >
+                {isSavingStatus ? 'Saving…' : 'Save status'}
+              </button>
+            )}
+          </div>
         </div>
         <div className="detail-actions">
           <button className="button button-outline" type="button" onClick={onBack}>Back to queue</button>
@@ -675,6 +770,7 @@ function TicketDetail({
         </div>
 
         <aside className="copilot-column">
+          {chatPanel}
           <section className="copilot-card">
             <div className="copilot-head"><div className="copilot-title"><span className="copilot-spark">✦</span><div><h2>AI copilot</h2><span>Investigation assistant</span></div></div><span className="copilot-mode">LAB</span></div>
             <div className="copilot-content">
@@ -720,33 +816,67 @@ function TicketDetail({
 }
 
 function TicketLookupChat({
-  chatMessages, chatDraft, isLoading, setChatDraft, onChat, onOpenTicket,
+  chatMessages, chatDraft, isLoading, messagesRef, selectedTicketId, setChatDraft, onChat, onOpenTicket,
 }: {
   chatMessages: ChatMessage[]
   chatDraft: string
   isLoading: boolean
+  messagesRef: RefObject<HTMLDivElement | null>
+  selectedTicketId: number | null
   setChatDraft: (value: string) => void
   onChat: (event: FormEvent<HTMLFormElement>) => void
   onOpenTicket: (ticketId: number) => void
 }) {
   return (
-    <section className="chat-card chat-lookup-global" aria-labelledby="ticket-chat-title">
+    <section
+      className={`chat-card chat-lookup-global ${selectedTicketId !== null ? 'chat-in-detail' : ''}`}
+      aria-labelledby="ticket-chat-title"
+    >
       <div className="chat-heading">
-        <div><span className="chat-icon">✦</span><div className="chat-title-copy"><h2 id="ticket-chat-title">CarlBot</h2><span>Ticket assistant</span></div></div>
-        <span className="chat-readonly">READ ONLY</span>
+        <div><span className="chat-icon">✦</span><div className="chat-title-copy"><h2 id="ticket-chat-title">CarlBot</h2><span>Ticket reasoning assistant</span></div></div>
+        <span className="chat-readonly">ADVICE ONLY</span>
       </div>
-      <p className="chat-intro">Ask about a site, camera, or ticket number.</p>
-      <div className="chat-messages" aria-live="polite" aria-busy={isLoading}>
+      <p className="chat-intro">
+        {selectedTicketId
+          ? `Using ticket #${selectedTicketId} and its recorded conversation as context.`
+          : 'Ask a question about a ticket, site, camera, or reported issue.'}
+        {' '}Suggestions do not run actions.
+      </p>
+      <div className="chat-messages" ref={messagesRef} role="log" aria-live="polite" aria-busy={isLoading}>
         {chatMessages.map((message, index) => (
           <div
             key={`${index}-${message.role}`}
             className={`chat-message chat-${message.role}`}
           >
             {message.text}
+            {message.role === 'assistant' && message.reasoningMode && (
+              <span className="chat-reasoning-mode">
+                {message.reasoningMode === 'llm' ? 'LLM-assisted' : 'Record-based'}
+              </span>
+            )}
+            {message.recommendations && message.recommendations.length > 0 && (
+              <div className="chat-recommendations">
+                <strong>Suggested next steps</strong>
+                <ol>
+                  {message.recommendations.map((recommendation, recommendationIndex) => (
+                    <li key={`${recommendation.category}-${recommendationIndex}`}>
+                      <span className={`chat-recommendation-category category-${recommendation.category}`}>
+                        {recommendation.category}
+                      </span>
+                      {recommendation.instruction}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
             {message.matches?.some((match) => match.source === 'live_helpdesk' && /^\d+$/.test(match.ticket_id)) && (
-              <div className="chat-ticket-links" aria-label="Open matching tickets">
+              <div className="chat-ticket-links" aria-label="Open cited ticket records">
+                <strong>Ticket records used</strong>
                 {message.matches
-                  .filter((match) => match.source === 'live_helpdesk' && /^\d+$/.test(match.ticket_id))
+                  .filter((match) =>
+                    match.source === 'live_helpdesk' &&
+                    /^\d+$/.test(match.ticket_id) &&
+                    (!message.citedTicketIds?.length || message.citedTicketIds.includes(match.ticket_id)))
                   .slice(0, 3)
                   .map((match) => {
                     const ticketId = Number(match.ticket_id)
@@ -768,7 +898,7 @@ function TicketLookupChat({
           </div>
         ))}
         {isLoading && (
-          <div className="chat-message chat-searching">Checking ticket records…</div>
+          <div className="chat-message chat-searching">Reviewing ticket details and conversation…</div>
         )}
         {chatMessages.length === 0 && !isLoading && (
           <div className="chat-cleared">Conversation context cleared. Ticket and system data were not changed.</div>
@@ -778,12 +908,12 @@ function TicketLookupChat({
         <input
           value={chatDraft}
           onChange={(event) => setChatDraft(event.target.value)}
-          placeholder="Ask about a ticket, site, or camera…"
+          placeholder={selectedTicketId ? `Ask about ticket #${selectedTicketId}…` : 'Ask about a ticket, site, or camera…'}
           aria-label="Ask CarlBot about tickets"
         />
-        <button type="submit" aria-label="Search tickets" disabled={!chatDraft.trim() || isLoading}>↑</button>
+        <button type="submit" aria-label="Ask CarlBot" disabled={!chatDraft.trim() || isLoading}>↑</button>
       </form>
-      <div className="chat-disclaimer">Read-only ticket lookup. <span>/clear</span> clears this conversation.</div>
+      <div className="chat-disclaimer">Suggestions only; CarlBot cannot change tickets or run actions. <span>/clear</span> clears this conversation.</div>
     </section>
   )
 }
@@ -811,30 +941,39 @@ function AssetInventory({
   assets, error, isLoading, faultByAsset, setFaultByAsset,
   onSimulate, onReset, isChanging,
 }: AssetInventoryProps) {
+  const sites = [...new Set(assets.map((asset) => asset.site_id || 'Unassigned site'))].sort()
   const cameras = assets.filter((asset) => asset.type === 'camera')
-  const recorders = assets.filter((asset) => asset.type === 'nvr')
-  const otherInfrastructure = assets.filter((asset) => asset.type !== 'camera' && asset.type !== 'nvr')
-  const unassignedCameras = cameras.filter((camera) => !recorders.some((recorder) => recorder.asset_id === camera.nvr_id))
   return (
     <section className="asset-page">
       <div className="page-heading">
-        <div><div className="eyebrow"><span className="eyebrow-dot" /> LAB INVENTORY / SITE-104</div><h1>Asset inventory</h1><p>Emulated cameras, recorder and AI infrastructure. Controls affect simulated state only.</p></div>
+        <div><div className="eyebrow"><span className="eyebrow-dot" /> MULTI-SITE LAB / INVENTORY</div><h1>Asset inventory</h1><p>Emulated cameras, recorders and AI infrastructure across the synthetic sites.</p></div>
         <span className="asset-total">{assets.length} synthetic assets</span>
       </div>
       <div className="asset-warning"><span>ⓘ</span><div><strong>Simulation controls</strong><p>Fault injection and reset operate only on this local lab emulator. The agent may automatically run only policy-approved safe actions.</p></div></div>
       {error ? <div className="state-panel state-error"><h2>Portal service unavailable</h2><p>{error}</p></div> : isLoading ? <div className="state-panel"><div className="loading-spinner" /><h2>Loading synthetic inventory</h2></div> : (
         <div className="asset-layout">
           <section className="content-card asset-tree-card">
-            <div className="section-heading"><div><span className="section-icon">⌘</span><h2>Equipment tree</h2><span className="section-count">{assets.length}</span></div><span className="subtle-label">SITE-104</span></div>
-            <div className="tree-root"><span className="tree-caret">⌄</span><span className="tree-site-icon">⌂</span><strong>North campus</strong><span className="tree-id">SITE-104</span><span className="tree-count">{assets.length}</span></div>
-            {recorders.map((recorder) => (
-              <div key={recorder.asset_id}>
-                <AssetRow asset={recorder} depth={1} fault={faultByAsset[recorder.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [recorder.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === recorder.asset_id} />
-                {cameras.filter((camera) => camera.nvr_id === recorder.asset_id).map((camera) => <AssetRow key={camera.asset_id} asset={camera} depth={2} fault={faultByAsset[camera.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [camera.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === camera.asset_id} />)}
-              </div>
-            ))}
-            {unassignedCameras.map((asset) => <AssetRow key={asset.asset_id} asset={asset} depth={1} fault={faultByAsset[asset.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [asset.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === asset.asset_id} />)}
-            {otherInfrastructure.map((asset) => <AssetRow key={asset.asset_id} asset={asset} depth={1} fault={faultByAsset[asset.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [asset.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === asset.asset_id} />)}
+            <div className="section-heading"><div><span className="section-icon">⌘</span><h2>Equipment by site</h2><span className="section-count">{assets.length}</span></div><span className="subtle-label">{sites.length} SITES</span></div>
+            {sites.map((site) => {
+              const siteAssets = assets.filter((asset) => (asset.site_id || 'Unassigned site') === site)
+              const recorders = siteAssets.filter((asset) => asset.type === 'nvr')
+              const siteCameras = siteAssets.filter((asset) => asset.type === 'camera')
+              const otherInfrastructure = siteAssets.filter((asset) => asset.type !== 'camera' && asset.type !== 'nvr')
+              const unassignedCameras = siteCameras.filter((camera) => !recorders.some((recorder) => recorder.asset_id === camera.nvr_id))
+              return (
+                <div className="site-asset-group" key={site}>
+                  <div className="tree-root"><span className="tree-caret">⌄</span><span className="tree-site-icon">⌂</span><strong>{site}</strong><span className="tree-count">{siteAssets.length}</span></div>
+                  {recorders.map((recorder) => (
+                    <div key={recorder.asset_id}>
+                      <AssetRow asset={recorder} depth={1} fault={faultByAsset[recorder.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [recorder.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === recorder.asset_id} />
+                      {siteCameras.filter((camera) => camera.nvr_id === recorder.asset_id).map((camera) => <AssetRow key={camera.asset_id} asset={camera} depth={2} fault={faultByAsset[camera.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [camera.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === camera.asset_id} />)}
+                    </div>
+                  ))}
+                  {unassignedCameras.map((asset) => <AssetRow key={asset.asset_id} asset={asset} depth={1} fault={faultByAsset[asset.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [asset.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === asset.asset_id} />)}
+                  {otherInfrastructure.map((asset) => <AssetRow key={asset.asset_id} asset={asset} depth={1} fault={faultByAsset[asset.asset_id] || ''} setFault={(fault) => setFaultByAsset({ ...faultByAsset, [asset.asset_id]: fault })} onSimulate={onSimulate} onReset={onReset} isChanging={isChanging === asset.asset_id} />)}
+                </div>
+              )
+            })}
             {assets.length === 0 && <div className="asset-empty">No emulated assets were returned by the portal.</div>}
           </section>
           <section className="asset-summary content-card">

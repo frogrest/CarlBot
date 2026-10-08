@@ -7,9 +7,9 @@ from typing import Any
 
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 _STOP_WORDS = {
-    'a', 'about', 'an', 'and', 'are', 'at', 'can', 'closed', 'do', 'does',
+    'a', 'about', 'active', 'an', 'and', 'are', 'at', 'answered', 'can', 'closed', 'do', 'does',
     'find', 'for', 'get', 'have', 'hey', 'history', 'in', 'is', 'it', 'me',
-    'record', 'recorded', 'subject', 'title', 'summarize', 'summary',
+    'record', 'recorded', 'resolved', 'subject', 'title', 'summarize', 'summary',
     'of', 'on', 'open', 'please', 'show', 'site', 'the', 'there', 'ticket',
     'tickets', 'was', 'were', 'what', 'when', 'where', 'which', 'with',
 }
@@ -80,6 +80,8 @@ def _site_query(message: str) -> set[str]:
 
 
 def _status_filter(message: str) -> str | None:
+    if re.search(r'\banswered\b', message, re.IGNORECASE):
+        return 'answered'
     if re.search(r'\bresolved\b', message, re.IGNORECASE):
         return 'resolved'
     if re.search(r'\b(closed|historical|history)\b', message, re.IGNORECASE):
@@ -97,6 +99,8 @@ def _matches_status(status: str, status_filter: str | None) -> bool:
     normalized = status.casefold().replace(' ', '_')
     if status_filter == 'closed':
         return normalized == 'closed'
+    if status_filter == 'answered':
+        return normalized == 'answered'
     if status_filter == 'resolved':
         return normalized == 'resolved'
     if status_filter == 'open':
@@ -104,7 +108,12 @@ def _matches_status(status: str, status_filter: str | None) -> bool:
     return True
 
 
-def _live_matches(message: str, tickets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _live_matches(
+    message: str,
+    tickets: list[dict[str, Any]],
+    *,
+    context_ticket_id: int | None = None,
+) -> list[dict[str, Any]]:
     query_tokens = _tokens(message)
     site_tokens = _site_query(message)
     issue_tokens = _requested_issue_terms(message)
@@ -113,12 +122,25 @@ def _live_matches(message: str, tickets: list[dict[str, Any]]) -> list[dict[str,
 
     for ticket in tickets:
         status = str(ticket.get('status') or '')
-        if not _matches_status(status, status_filter):
+        ticket_status = str(ticket.get('ticket_status') or '')
+        if ticket_status not in {'Open', 'Answered', 'Closed'}:
+            ticket_status = (
+                'Closed' if status == 'closed'
+                else 'Answered' if status in {'resolved', 'ready_for_verification'}
+                else 'Open'
+            )
+        if status_filter == 'answered' and ticket_status != 'Answered':
+            continue
+        if status_filter == 'closed' and ticket_status != 'Closed':
+            continue
+        if status_filter == 'open' and ticket_status != 'Open':
+            continue
+        if status_filter == 'resolved' and not _matches_status(status, status_filter):
             continue
         searchable = ' '.join(
             str(ticket.get(key) or '')
             for key in (
-                'id', 'title', 'description', 'site_id', 'asset_id',
+                'id', 'title', 'description', 'site_id', 'asset_id', 'ticket_status',
                 'resolution', 'root_cause', 'ai_summary',
             )
         )
@@ -152,15 +174,17 @@ def _live_matches(message: str, tickets: list[dict[str, Any]]) -> list[dict[str,
             for key in ('resolution', 'root_cause', 'description')
             if str(ticket.get(key) or '').strip()
         ]
+        note_limit = 20 if ticket.get('id') == context_ticket_id else 3
         details.extend(
             str(note.get('body') or '').strip()
-            for note in notes[:3]
+            for note in notes[:note_limit]
             if str(note.get('body') or '').strip()
         )
         matches.append((score, {
             'ticket_id': str(ticket['id']),
             'title': str(ticket.get('title') or ''),
             'status': status,
+            'ticket_status': ticket_status,
             'priority': str(ticket.get('priority') or ''),
             'site_id': site_id,
             'asset_id': str(ticket.get('asset_id') or ''),
@@ -216,6 +240,7 @@ def _export_matches(message: str, path: Path) -> list[dict[str, Any]]:
                 'ticket_id': str(row.get('Ticket Number') or '').strip(),
                 'title': str(row.get('Subject') or '').strip(),
                 'status': status,
+                'ticket_status': status.title() if status.casefold() in {'open', 'answered', 'closed'} else '',
                 'priority': str(row.get('Priority') or '').strip(),
                 'site_id': str(row.get('Location') or '').strip(),
                 'asset_id': '',
@@ -243,11 +268,14 @@ def _describe_matches(message: str, matches: list[dict[str, Any]]) -> str:
     has_partial_site = any(match['site_match'] == 'partial' for match in matches)
     if len(matches) == 1:
         match = matches[0]
-        status = _STATUS_EXPLANATIONS.get(str(match['status']), str(match['status']).replace('_', ' '))
+        status_value = match.get('ticket_status') or match['status']
+        status = _STATUS_EXPLANATIONS.get(str(status_value), str(status_value).replace('_', ' '))
         title = str(match['title'])
         asset_id = str(match['asset_id'])
         asset = f' ({asset_id})' if asset_id and asset_id.casefold() not in title.casefold() else ''
         answer = f'Ticket #{match["ticket_id"]}: {title}{asset}. {status.capitalize()}.'
+        if match['status'] == 'pending_technician' and match.get('ticket_status') != 'Closed':
+            answer += ' Waiting for a technician.'
 
         detail = next(
             (_PLAIN_LANGUAGE_DETAILS.get(value, value) for value in match['details'] if value),
@@ -269,13 +297,16 @@ def _describe_matches(message: str, matches: list[dict[str, Any]]) -> str:
         answer_parts.append('The site is not confirmed.')
 
     for match in matches[:3]:
-        status = _STATUS_EXPLANATIONS.get(str(match['status']), str(match['status']).replace('_', ' '))
+        status_value = match.get('ticket_status') or match['status']
+        status = _STATUS_EXPLANATIONS.get(str(status_value), str(status_value).replace('_', ' '))
         title = str(match['title'])
         asset_id = str(match['asset_id'])
         asset = f' ({asset_id})' if asset_id and asset_id.casefold() not in title.casefold() else ''
         answer_parts.append(
             f'#{match["ticket_id"]} — {title}{asset}; {status}.'
         )
+        if match['status'] == 'pending_technician' and match.get('ticket_status') != 'Closed':
+            answer_parts[-1] = answer_parts[-1][:-1] + '; waiting for a technician.'
     if len(matches) > 3:
         remaining = len(matches) - 3
         noun = 'match' if remaining == 1 else 'matches'
@@ -283,8 +314,46 @@ def _describe_matches(message: str, matches: list[dict[str, Any]]) -> str:
     return '\n'.join(answer_parts)
 
 
-def query_tickets(message: str, tickets: list[dict[str, Any]]) -> dict[str, Any]:
-    matches = _live_matches(message, tickets)
+def query_tickets(
+    message: str,
+    tickets: list[dict[str, Any]],
+    *,
+    context_ticket_id: int | None = None,
+) -> dict[str, Any]:
+    matches = _live_matches(
+        message,
+        tickets,
+        context_ticket_id=context_ticket_id,
+    )
+    if context_ticket_id is not None:
+        context_match = next(
+            (match for match in matches if match['ticket_id'] == str(context_ticket_id)),
+            None,
+        )
+        if context_match is None:
+            context_match = next(
+                iter(_live_matches(f'ticket {context_ticket_id}', tickets)),
+                None,
+            )
+            if context_match is None:
+                raise ValueError(f'Context ticket {context_ticket_id} was not found')
+            context_ticket = next(
+                ticket for ticket in tickets
+                if str(ticket.get('id')) == str(context_ticket_id)
+            )
+            context_match['details'] = [
+                str(context_ticket.get(key) or '').strip()
+                for key in ('resolution', 'root_cause', 'description', 'ai_summary')
+                if str(context_ticket.get(key) or '').strip()
+            ] + [
+                str(note.get('body') or '').strip()
+                for note in (context_ticket.get('notes') or [])[:20]
+                if str(note.get('body') or '').strip()
+            ]
+            matches.insert(0, context_match)
+        else:
+            matches.remove(context_match)
+            matches.insert(0, context_match)
     reference_path = os.getenv('TICKET_REFERENCE_CSV')
     reference_export_available = False
     if reference_path:
@@ -295,6 +364,8 @@ def query_tickets(message: str, tickets: list[dict[str, Any]]) -> dict[str, Any]
 
     matches.sort(
         key=lambda item: (
+            context_ticket_id is not None
+            and item['ticket_id'] == str(context_ticket_id),
             item['site_match'] == 'exact',
             _status_filter(message) is None or _matches_status(item['status'], _status_filter(message)),
         ),
@@ -307,4 +378,5 @@ def query_tickets(message: str, tickets: list[dict[str, Any]]) -> dict[str, Any]
         'answer': answer,
         'matches': matches[:10],
         'reference_export_available': reference_export_available,
+        'reference_export_configured': bool(reference_path),
     }

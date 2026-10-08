@@ -1,4 +1,7 @@
 """Helpdesk API contract tests (Phase 1)."""
+import sqlite3
+
+from services.helpdesk import app as helpdesk_module
 from services.helpdesk.app import STATUS_VALUES
 
 
@@ -6,10 +9,14 @@ def test_list_seeded_tickets(helpdesk):
     res = helpdesk.get('/api/tickets')
     assert res.status_code == 200
     tickets = res.json()['tickets']
-    assert len(tickets) >= 5
+    assert len(tickets) >= 25
     ids = {t['id'] for t in tickets}
     assert {1001, 1002, 1003, 1004, 1005} <= ids
     assert all(t['status'] in STATUS_VALUES for t in tickets)
+    assert {ticket['ticket_status'] for ticket in tickets} == {'Open', 'Answered', 'Closed'}
+    assert {"Freddy Fazbear's", 'Centerpark Tower 1', 'Pacman'} <= {
+        ticket['site_id'] for ticket in tickets
+    }
 
 
 def test_get_ticket_includes_notes(helpdesk):
@@ -37,6 +44,7 @@ def test_create_patch_and_status_validation(helpdesk):
     body = created.json()
     ticket_id = body['id']
     assert body['status'] == 'open'
+    assert body['ticket_status'] == 'Open'
     assert body['ai_state'] == 'new'
 
     patched = helpdesk.patch(f'/api/tickets/{ticket_id}', json={
@@ -48,6 +56,42 @@ def test_create_patch_and_status_validation(helpdesk):
 
     bad = helpdesk.patch(f'/api/tickets/{ticket_id}', json={'status': 'not_a_status'})
     assert bad.status_code == 400
+
+
+def test_ticket_status_choices_are_independent_of_agent_workflow(helpdesk):
+    response = helpdesk.patch('/api/tickets/1001', json={'ticket_status': 'Answered'})
+    assert response.status_code == 200
+    assert response.json()['ticket_status'] == 'Answered'
+    assert response.json()['status'] == 'open'
+
+    workflow_update = helpdesk.patch('/api/tickets/1001', json={'status': 'pending_technician'})
+    assert workflow_update.json()['ticket_status'] == 'Answered'
+
+    invalid = helpdesk.patch('/api/tickets/1001', json={'ticket_status': 'In Progress'})
+    assert invalid.status_code == 400
+
+
+def test_existing_helpdesk_database_gets_ticket_status_migration(monkeypatch, tmp_path):
+    path = tmp_path / 'legacy-helpdesk.db'
+    con = sqlite3.connect(path)
+    con.execute('''CREATE TABLE tickets (
+        id INTEGER PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
+        status TEXT NOT NULL, priority TEXT NOT NULL, site_id TEXT NOT NULL,
+        asset_id TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        resolution TEXT, root_cause TEXT, ai_summary TEXT, ai_state TEXT
+    )''')
+    con.execute(
+        '''INSERT INTO tickets VALUES (77, 'Legacy ticket', 'Existing row',
+        'resolved', 'medium', 'SITE-104', 'CAM-027', '2026-01-01', '2026-01-01',
+        NULL, NULL, NULL, 'resolved')'''
+    )
+    con.commit()
+    con.close()
+    monkeypatch.setenv('HELPDESK_DB', str(path))
+
+    helpdesk_module.init_db()
+
+    assert helpdesk_module.get_ticket(77)['ticket_status'] == 'Answered'
 
 
 def test_search_by_keyword_and_asset(helpdesk):

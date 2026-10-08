@@ -18,7 +18,7 @@ PORTAL_ASSETS_INITIAL = copy.deepcopy(portal_module.ASSETS)
 
 @pytest.fixture()
 def helpdesk(monkeypatch, tmp_path):
-    """Fresh seeded helpdesk DB per test (5 seed tickets + notes)."""
+    """Fresh seeded helpdesk DB per test (25 synthetic tickets + notes)."""
     monkeypatch.setenv('HELPDESK_DB', str(tmp_path / 'helpdesk.db'))
     from fastapi.testclient import TestClient
     with TestClient(helpdesk_module.app) as client:

@@ -193,7 +193,14 @@ It is disabled unless both `LLM_BASE_URL` and `LLM_MODEL` are configured. Set
 never commit API keys. Docker Compose passes these variables through to the agent.
 Malformed plans and request failures fall back to the deterministic reasoner.
 
-The model produces a structured plan rather than executing arbitrary commands.
+The agent model produces a structured plan rather than executing arbitrary commands.
+
+Ticket chat uses the same optional `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY`
+configuration. On a selected ticket, CarlBot can read its recorded fields and
+up to 20 conversation notes (credential-like values are redacted), cite linked
+ticket records, and suggest advice-only next steps. Without model configuration,
+the chat uses a deterministic record-based responder. Chat recommendations
+never call the agent or execute tools.
 
 The safe path is:
 

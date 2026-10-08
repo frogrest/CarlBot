@@ -73,7 +73,7 @@ POST /api/monitor/run               (agent)
 POST /api/tickets/{id}/run          (agent)
 GET  /api/tickets                   (helpdesk)
 GET  /api/tickets/{id}              (helpdesk)
-POST /api/chat/query                (read-only ticket lookup)
+POST /api/chat/query                (ticket-grounded chat; optional LLM reasoning)
 POST /api/tickets/{id}/notes        (helpdesk)
 POST /api/tickets/{id}/request-verification (helpdesk)
 GET  /api/assets                    (portal)
@@ -82,11 +82,16 @@ POST /api/simulate/fault            (portal)
 POST /api/assets/{id}/actions/reset-simulation (portal)
 ```
 
-The ticket lookup chat searches live Helpdesk records and, when present, the
-local `reference/ticketreference examples.csv` export. That export is
-git-ignored, mounted read-only, and is not required to run the lab. It contains
-metadata only; lookup replies do not expose sender email addresses. The chat
-does not use an LLM API key and cannot change tickets or run investigations.
+The ticket chat searches live Helpdesk records and, when present, the local
+`reference/ticketreference examples.csv` export. On a ticket detail page, CarlBot
+can reason over the selected ticket's details and recorded conversation, cite
+and link records it used, and suggest next steps. The optional LLM responder
+uses the same `LLM_BASE_URL`, `LLM_MODEL`, and `LLM_API_KEY` environment
+configuration as the agent; credential-like values are redacted first. With no
+LLM configuration, deterministic record-based guidance is used. Suggestions
+cannot change tickets, call tools, or run investigations. The local CSV export
+is git-ignored, mounted read-only, metadata-only, and replies do not expose
+sender email addresses.
 
 ## End-to-end autonomous test
 

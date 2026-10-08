@@ -6,6 +6,8 @@ export type TicketStatus =
   | 'resolved'
   | 'closed'
 
+export type TicketDeskStatus = 'Open' | 'Answered' | 'Closed'
+
 export interface TicketNote {
   author: string
   body: string
@@ -17,6 +19,7 @@ export interface Ticket {
   title: string
   description: string
   status: TicketStatus
+  ticket_status: TicketDeskStatus
   priority: 'low' | 'medium' | 'high' | 'urgent' | string
   site_id: string
   asset_id: string

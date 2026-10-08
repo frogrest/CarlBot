@@ -6,6 +6,8 @@ def test_asset_inventory(portal):
     assert res.status_code == 200
     ids = {a['asset_id'] for a in res.json()['assets']}
     assert {'CAM-027', 'CAM-018', 'CAM-019', 'NVR-02', 'AI-BOX-07'} <= ids
+    sites = {a['site_id'] for a in res.json()['assets']}
+    assert {"Freddy Fazbear's", 'Centerpark Tower 1', 'Pacman'} <= sites
 
 
 def test_health_and_ping_healthy(portal):

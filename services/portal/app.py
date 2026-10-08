@@ -34,6 +34,72 @@ ASSETS = {
         'asset_id': 'AI-BOX-07', 'type': 'ai_box', 'site_id': 'SITE-104',
         'ip': '192.168.30.70', 'reachable': True, 'service': 'healthy', 'cpu': 34,
         'ram': 47, 'storage': 55, 'cloud': 'healthy', 'fault': None
+    },
+    'CAM-101': {
+        'asset_id': 'CAM-101', 'type': 'camera', 'site_id': "Freddy Fazbear's",
+        'ip': '10.10.1.101', 'nvr_id': 'NVR-101', 'ai_box_id': 'AI-BOX-101',
+        'reachable': True, 'rtsp': 'healthy', 'auth': 'valid', 'cpu': 24,
+        'storage': 38, 'poe': True, 'last_seen': '2026-10-08T10:00:00Z', 'fault': None
+    },
+    'CAM-102': {
+        'asset_id': 'CAM-102', 'type': 'camera', 'site_id': "Freddy Fazbear's",
+        'ip': '10.10.1.102', 'nvr_id': 'NVR-101', 'ai_box_id': 'AI-BOX-101',
+        'reachable': True, 'rtsp': 'healthy', 'auth': 'valid', 'cpu': 28,
+        'storage': 42, 'poe': True, 'last_seen': '2026-10-08T10:00:00Z', 'fault': None
+    },
+    'NVR-101': {
+        'asset_id': 'NVR-101', 'type': 'nvr', 'site_id': "Freddy Fazbear's",
+        'ip': '10.10.1.10', 'reachable': True, 'rtsp': 'healthy', 'cpu': 31,
+        'storage': 63, 'fault': None
+    },
+    'AI-BOX-101': {
+        'asset_id': 'AI-BOX-101', 'type': 'ai_box', 'site_id': "Freddy Fazbear's",
+        'ip': '10.10.1.70', 'reachable': True, 'service': 'healthy', 'cpu': 37,
+        'ram': 51, 'storage': 58, 'cloud': 'healthy', 'fault': None
+    },
+    'CAM-201': {
+        'asset_id': 'CAM-201', 'type': 'camera', 'site_id': 'Centerpark Tower 1',
+        'ip': '10.20.1.201', 'nvr_id': 'NVR-201', 'ai_box_id': 'AI-BOX-201',
+        'reachable': True, 'rtsp': 'healthy', 'auth': 'valid', 'cpu': 22,
+        'storage': 40, 'poe': True, 'last_seen': '2026-10-08T10:00:00Z', 'fault': None
+    },
+    'CAM-202': {
+        'asset_id': 'CAM-202', 'type': 'camera', 'site_id': 'Centerpark Tower 1',
+        'ip': '10.20.1.202', 'nvr_id': 'NVR-201', 'ai_box_id': 'AI-BOX-201',
+        'reachable': True, 'rtsp': 'healthy', 'auth': 'valid', 'cpu': 26,
+        'storage': 43, 'poe': True, 'last_seen': '2026-10-08T10:00:00Z', 'fault': None
+    },
+    'NVR-201': {
+        'asset_id': 'NVR-201', 'type': 'nvr', 'site_id': 'Centerpark Tower 1',
+        'ip': '10.20.1.10', 'reachable': True, 'rtsp': 'healthy', 'cpu': 33,
+        'storage': 66, 'fault': None
+    },
+    'AI-BOX-201': {
+        'asset_id': 'AI-BOX-201', 'type': 'ai_box', 'site_id': 'Centerpark Tower 1',
+        'ip': '10.20.1.70', 'reachable': True, 'service': 'healthy', 'cpu': 40,
+        'ram': 55, 'storage': 61, 'cloud': 'healthy', 'fault': None
+    },
+    'CAM-301': {
+        'asset_id': 'CAM-301', 'type': 'camera', 'site_id': 'Pacman',
+        'ip': '10.30.1.31', 'nvr_id': 'NVR-301', 'ai_box_id': 'AI-BOX-301',
+        'reachable': True, 'rtsp': 'healthy', 'auth': 'valid', 'cpu': 25,
+        'storage': 37, 'poe': True, 'last_seen': '2026-10-08T10:00:00Z', 'fault': None
+    },
+    'CAM-302': {
+        'asset_id': 'CAM-302', 'type': 'camera', 'site_id': 'Pacman',
+        'ip': '10.30.1.32', 'nvr_id': 'NVR-301', 'ai_box_id': 'AI-BOX-301',
+        'reachable': True, 'rtsp': 'healthy', 'auth': 'valid', 'cpu': 29,
+        'storage': 45, 'poe': True, 'last_seen': '2026-10-08T10:00:00Z', 'fault': None
+    },
+    'NVR-301': {
+        'asset_id': 'NVR-301', 'type': 'nvr', 'site_id': 'Pacman',
+        'ip': '10.30.1.10', 'reachable': True, 'rtsp': 'healthy', 'cpu': 35,
+        'storage': 68, 'fault': None
+    },
+    'AI-BOX-301': {
+        'asset_id': 'AI-BOX-301', 'type': 'ai_box', 'site_id': 'Pacman',
+        'ip': '10.30.1.70', 'reachable': True, 'service': 'healthy', 'cpu': 32,
+        'ram': 46, 'storage': 53, 'cloud': 'healthy', 'fault': None
     }
 }
 

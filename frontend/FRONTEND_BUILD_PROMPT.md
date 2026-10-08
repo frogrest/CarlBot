@@ -100,9 +100,9 @@ Before components, encode the PDF's visual language as tokens (CSS variables or 
 ```text
 typography scale · spacing scale · radius · border styles
 surfaces (app bg, panel bg, row hover, selected row)
-status colors (open / in_progress / pending_technician /
-               ready_for_verification / resolved / closed,
-               priority low|medium|high, fault/healthy indicators)
+status colors for user-facing Open / Answered / Closed choices
+agent workflow status as secondary information
+priority low|medium|high, fault/healthy indicators
 icon sizing · shadow (if present in screenshots)
 ```
 
@@ -211,7 +211,8 @@ AI states seen in code: `new, investigating, awaiting_technician, resolved`.
 | `POST /api/assets/{id}/actions/reset-simulation` | lab reset |
 
 Fault enum (valid values): `network_down, rtsp_auth_failure, rtsp_down, high_cpu, storage_full, poe_off, ai_service_down, cloud_down`.
-Seed assets: `CAM-027, CAM-018, CAM-019, NVR-02, AI-BOX-07` at `SITE-104`.
+Seed assets: the original `SITE-104` inventory plus synthetic devices at
+`Freddy Fazbear's`, `Centerpark Tower 1`, and `Pacman`.
 
 ### Agent — `/agent`
 
@@ -223,10 +224,10 @@ Seed assets: `CAM-027, CAM-018, CAM-019, NVR-02, AI-BOX-07` at `SITE-104`.
 
 ### Ticket lookup chat
 
-Use the read-only Helpdesk lookup endpoint:
+Use the read-only Helpdesk ticket assistant endpoint:
 
 ```text
-POST /api/chat/query                   → {answer, matches, reference_export_available}
+POST /api/chat/query                   → {answer, matches, recommendations, cited_ticket_ids, reasoning_mode}
 ```
 
 ## 8. AI copilot behavior (the differentiating screen)
@@ -258,6 +259,9 @@ Per `docs/frontend/CHATBOT_SPEC.md`:
 
 - Available from the ticket queue and detail view, independent of ticket selection.
 - Search existing live Helpdesk tickets and the optional local reference CSV by site, camera, issue, status, or ticket ID.
+- On a ticket detail page, send the selected ticket ID so CarlBot can reason over its complete ticket details and recorded conversation notes.
+- Present grounded recommendations distinctly from the answer; link cited live ticket records and label whether the response is LLM-assisted or deterministic.
+- When configured, the LLM may reason over only retrieved records; credential-like content must be redacted, and all suggestions remain advice-only.
 - Answer from retrieved record fields only. Mark partial site matches as unconfirmed and disclose when the export has metadata but no conversation.
 - Chat may call only `POST /helpdesk/api/chat/query`; it must not call agent, portal, note, ticket-write, or action endpoints.
 - **`/clear`** typed in the composer clears only that session's conversation, then displays verbatim:
