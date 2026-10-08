@@ -429,8 +429,8 @@ The safest order is:
 3. Add orchestrator state machine.
 4. Add specialist agents.
 5. Improve knowledge retrieval.
-6. Add LLM reasoning.
-7. Build screenshot-driven frontend replica.
+6. Keep the Phase 4 reasoning adapter deterministic by default; opt into an LLM only for controlled replays.
+7. Complete the screenshot-driven frontend replica.
 8. Add chatbot/copilot.
 9. Add evaluation scenarios.
 10. Only then consider more advanced autonomy.

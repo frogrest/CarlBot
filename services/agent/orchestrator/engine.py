@@ -12,6 +12,8 @@ from typing import Any, Callable, Dict
 
 from ..policy.audit import AuditLog
 from ..policy.engine import PolicyEngine
+from ..reasoning import DeterministicReasoner, Reasoner
+from ..reasoning.schemas import Plan
 from ..specialists import SpecialistDispatcher
 from .budgets import Budget
 from .models import (ActionProposal, EvidenceType, Handoff, IncidentContext,
@@ -24,13 +26,15 @@ P = IncidentState
 
 class Orchestrator:
     def __init__(self, tools, store: IncidentStore, policy: PolicyEngine,
-                 audit: AuditLog, budget_factory: Callable[[], Budget] = Budget):
+                 audit: AuditLog, budget_factory: Callable[[], Budget] = Budget,
+                 reasoner: Reasoner | None = None):
         self.tools = tools
         self.store = store
         self.policy = policy
         self.audit = audit
         self.machine = StateMachine(store)
         self.budget_factory = budget_factory
+        self.reasoner = reasoner or DeterministicReasoner()
 
     def run(self, ticket: Dict[str, Any]) -> IncidentContext:
         """Drive one ticket through the state machine (idempotent)."""
@@ -128,84 +132,25 @@ class Orchestrator:
         self.machine.transition(ctx, P.DIAGNOSED, 'evidence review passed')
 
     def _stage_diagnosed(self, ctx: IncidentContext, ticket: Dict[str, Any]) -> None:
-        """Rule table ported from legacy core.investigate(), now gated by
-        the state machine and (next stage) the policy engine."""
-        h = ctx.observations.get('health') or {}
-        rtsp = ctx.observations.get('rtsp') or {}
-
-        if h.get('poe') is False:
-            self._diagnose_handoff(
-                ctx, 'PoE/power fault: camera unreachable with PoE off', 0.9,
-                requested_action='Inspect PoE port link, Ethernet cable and camera '
-                                 'power; move to a known-good port if needed.',
-                why='physical repair is human-only',
-                unverifiable=['cable and PoE status are not observable in monitoring'],
-                uncertainty='power loss observed; root physical cause unknown')
-        elif h.get('reachable') is False:
-            self._diagnose_handoff(
-                ctx, 'Network reachability failure (host unreachable)', 0.8,
-                requested_action='Check upstream switch, patch panel and device power; '
-                                 'do not change IP configuration without approval.',
-                why='network/physical next steps are approval-required or human-only',
-                unverifiable=['physical link state beyond simulated reachability'],
-                uncertainty='single-host view; site-wide correlation not yet available')
-        elif rtsp.get('auth') == 'invalid' or h.get('rtsp') == 'auth_failed':
-            self._diagnose_handoff(
-                ctx, 'Likely RTSP authentication/configuration mismatch', 0.9,
-                requested_action='Verify approved RTSP credentials/stream configuration '
-                                 'against the internal procedure (never change '
-                                 'credentials autonomously).',
-                why='credential changes are class C/D (approval required)',
-                unverifiable=['credential values are not readable in the simulator'],
-                uncertainty='auth rejection observed; mismatching side unproven')
-        elif h.get('rtsp') == 'unavailable' or rtsp.get('stream') == 'unavailable':
-            ctx.diagnosis = 'Transient RTSP interruption'
-            ctx.confidence = 0.8
+        """Obtain a proposal; policy and evidence review remain independent gates."""
+        plan: Plan = self.reasoner.propose(ctx)
+        ctx.diagnosis = plan.diagnosis
+        ctx.confidence = plan.confidence
+        if plan.action is not None:
             ctx.proposed_action = ActionProposal(
-                name='reconnect-rtsp', asset_id=ctx.asset_id,
-                reason='transient RTSP outage with valid auth (registered safe action)',
-                evidence_ids=[e.id for e in ctx.evidence])
+                name=plan.action.name,
+                asset_id=plan.action.asset_id,
+                reason=plan.action.reason,
+                evidence_ids=plan.action.evidence_ids,
+            )
             self.machine.transition(ctx, P.ACTION_PROPOSED, ctx.diagnosis)
-        elif h.get('type') == 'ai_box' and h.get('service') == 'down':
-            ctx.diagnosis = 'AI inference service is down'
-            ctx.confidence = 0.9
-            ctx.proposed_action = ActionProposal(
-                name='restart-ai-service', asset_id=ctx.asset_id,
-                reason='AI service down on reachable host (registered safe action)',
-                evidence_ids=[e.id for e in ctx.evidence])
-            self.machine.transition(ctx, P.ACTION_PROPOSED, ctx.diagnosis)
-        elif (h.get('cpu') or 0) >= 90:
-            self._diagnose_handoff(
-                ctx, 'High resource utilization threatening service health', 0.8,
-                requested_action='Inspect active processes/load and trend before any '
-                                 'consequential restart; plan capacity relief.',
-                why='consequential restarts and config changes need human approval',
-                unverifiable=['process-level detail is not exposed by the simulator'],
-                uncertainty='cause of the load unknown')
-        elif (h.get('storage') or 0) >= 95:
-            self._diagnose_handoff(
-                ctx, 'Storage capacity critically high (retention at risk)', 0.9,
-                requested_action='Free or rotate storage per the site SOP; storage '
-                                 'deletion is human-only.',
-                why='destructive storage work is human-only',
-                unverifiable=['what occupies the storage'],
-                uncertainty='only capacity level is observable')
-        elif h.get('cloud') == 'unavailable':
-            self._diagnose_handoff(
-                ctx, 'Cloud synchronization unavailable', 0.7,
-                requested_action='Check upstream connectivity and cloud service status '
-                                 'before changing local configuration.',
-                why='upstream diagnosis and config changes are out of autonomous scope',
-                unverifiable=['cloud-side service health'],
-                uncertainty='local vs cloud side unknown')
-        else:
-            self._diagnose_handoff(
-                ctx, 'No critical fault reproduced by current checks', 0.3,
-                requested_action='Review logs and continue guided troubleshooting '
-                                 'with the technician.',
-                why='evidence insufficient for an autonomous action',
-                unverifiable=['reported symptom not reproducible from telemetry'],
-                uncertainty='low confidence; symptom may be client-side/intermittent')
+            return
+        self._diagnose_handoff(
+            ctx, plan.diagnosis, plan.confidence,
+            requested_action=plan.requested_action,
+            why=plan.why_stopped,
+            unverifiable=plan.unverifiable,
+            uncertainty=plan.uncertainty)
 
     def _stage_new(self, ctx: IncidentContext, ticket: Dict[str, Any]) -> None:
         # Only reachable if a previous run crashed before classifying.

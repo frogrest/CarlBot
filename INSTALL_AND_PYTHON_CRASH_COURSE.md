@@ -640,16 +640,20 @@ Do not ask an AI coding agent to build everything at once and hope for the best.
 Use this order:
 
 ```text
-Phase 1  → get the current lab running
-Phase 2  → make tests reliable
-Phase 3  → add orchestrator/state machine
-Phase 4  → add specialist agents
-Phase 5  → add knowledge/RAG layer
-Phase 6  → add LLM reasoning
-Phase 7  → build helpdesk frontend replica
-Phase 8  → embed chatbot/copilot
-Phase 9  → run scenario evaluation
+Phase 1  → stabilize the deterministic lab
+Phase 2  → add the orchestrator/state machine
+Phase 3  → add specialist agents
+Phase 4  → add the deterministic-first LLM reasoning adapter
+Phase 5  → build the helpdesk frontend replica
+Phase 6  → integrate the ticket-side chatbot/copilot
+Phase 7  → run scenario evaluation
 ```
+
+Phase 4 stays deterministic by default. To opt into an OpenAI-compatible model,
+configure `LLM_BASE_URL` and `LLM_MODEL` in the agent process environment; set
+`LLM_API_KEY` there only when the endpoint requires it. Do not commit credentials.
+The adapter has no tools and its validated proposals still pass through evidence
+review and the deterministic policy engine.
 
 ---
 

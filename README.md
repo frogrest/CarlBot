@@ -218,9 +218,11 @@ ready_for_verification
 agent verifies
 ```
 
-## Why the first agent is deterministic
+## Deterministic-first reasoning
 
-The LLM is intentionally not the control system yet. Before adding an LLM, we want reliable answers to:
+The deterministic reasoner remains the default. An optional Phase 4 model adapter
+can propose a structured plan when `LLM_BASE_URL` and `LLM_MODEL` are configured.
+Before enabling it, the lab keeps reliable answers to:
 
 - What tools exist?
 - What does each tool return?
@@ -231,7 +233,9 @@ The LLM is intentionally not the control system yet. Before adding an LLM, we wa
 - How do we prevent loops and repeated work?
 - How do we evaluate a diagnosis against the actual simulated root cause?
 
-Once these are stable, an LLM can be inserted as a reasoning/planning component behind the same tools and safety policy.
+The adapter has no tools or shell access. Its schema-validated proposal still passes
+through evidence review and the independent deterministic policy engine. An API key,
+when needed, is read only from the `LLM_API_KEY` environment variable.
 
 ## Adding your documents
 
@@ -249,7 +253,8 @@ See `docs/README.md` for a recommended structure and document format.
 6. Add a test.
 7. Run the lab and inject the fault.
 8. Inspect helpdesk and agent run history.
-9. Only then add an LLM or make a new action autonomous.
+9. Replay scenarios with the optional LLM only after deterministic tests pass; a new
+   autonomous action still requires a separate policy contract and tests.
 
 ## Local non-Docker development
 
@@ -278,11 +283,10 @@ For local non-Docker execution, the agent uses the defaults `http://localhost:80
 
 ### v0.4 — LLM reasoning
 
-- model adapter
-- tool calling
-- structured plans
-- confidence/evidence requirements
-- hallucination-resistant action selection
+- ✅ deterministic-first reasoner interface and OpenAI-compatible HTTP adapter
+- strict structured plans; malformed output falls back to deterministic reasoning
+- bounded incident/evidence context and version-controlled prompts
+- independent evidence review and policy enforcement; no model tool calling
 
 ### v0.5 — Technician copilot
 

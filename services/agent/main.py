@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from .core import Agent
 from .orchestrator import Budget, IncidentState, IncidentStore, Orchestrator
 from .policy import AuditLog, PolicyEngine
+from .reasoning import configured_reasoner
 from .tools import ToolBus
 
 HELPDESK_URL = os.getenv('HELPDESK_URL', 'http://localhost:8000')
@@ -22,6 +23,7 @@ AGENT_DB = Path(os.getenv('AGENT_DB', '/app/data/agent.db'))
 
 app = FastAPI(title='Autonomous AI Ops Agent', version='0.2.0')
 agent = Agent(HELPDESK_URL, PORTAL_URL, DOCS_ROOT)
+reasoner = configured_reasoner()
 stop_event = threading.Event()
 worker_thread: threading.Thread | None = None
 
@@ -38,6 +40,7 @@ async def lifespan(app: FastAPI):
         stop_event.set()
         if worker_thread:
             worker_thread.join(timeout=2)
+        reasoner.close()
         agent.close()
 
 
@@ -45,29 +48,15 @@ app.router.lifespan_context = lifespan
 
 
 def build_orchestrator() -> Orchestrator:
-    """Assemble the Phase 2 stack on the shared paths (tests inject their own)."""
+    """Assemble the orchestrator stack on shared paths (tests inject their own)."""
     store = IncidentStore(AGENT_DB)
     return Orchestrator(
         tools=ToolBus(HELPDESK_URL, PORTAL_URL, client=agent.client, docs_root=DOCS_ROOT),
         store=store,
         policy=PolicyEngine(),
         audit=AuditLog(AGENT_DB),
+        reasoner=reasoner,
     )
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global worker_thread
-    init_db()
-    worker_thread = threading.Thread(target=worker, daemon=True)
-    worker_thread.start()
-    try:
-        yield
-    finally:
-        stop_event.set()
-        if worker_thread:
-            worker_thread.join(timeout=2)
-        agent.close()
 
 
 def connect():

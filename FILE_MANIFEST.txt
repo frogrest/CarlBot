@@ -69,6 +69,7 @@
 ./prompts/rtsp_agent.md
 ./prompts/specialist_common.md
 ./prompts/technician_agent.md
+./pytest.ini
 ./README.md
 ./reference/README.md
 ./reference/screenshots/reference.pdf
@@ -90,6 +91,11 @@
 ./services/agent/policy/__init__.py
 ./services/agent/policy/audit.py
 ./services/agent/policy/engine.py
+./services/agent/reasoning/__init__.py
+./services/agent/reasoning/base.py
+./services/agent/reasoning/deterministic.py
+./services/agent/reasoning/llm_adapter.py
+./services/agent/reasoning/schemas.py
 ./services/agent/specialists/__init__.py
 ./services/agent/specialists/dispatcher.py
 ./services/agent/tools/__init__.py
@@ -107,6 +113,7 @@
 ./tests/test_monitor_dedup.py
 ./tests/test_orchestrator.py
 ./tests/test_portal_api.py
+./tests/test_reasoning.py
 ./tests/test_sanity.py
 ./tests/test_specialists.py
 ./tests/test_ticket_chat.py

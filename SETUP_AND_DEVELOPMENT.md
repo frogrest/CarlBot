@@ -185,9 +185,15 @@ docs/
 
 Do not rewrite source documents without preserving their meaning and origin.
 
-## 12. Adding an AI model later
+## 12. Optional Phase 4 AI model configuration
 
-The LLM should be added behind the existing tool/policy boundary. The model should produce a structured plan rather than execute arbitrary commands.
+The Phase 4 adapter is already available behind the existing tool/policy boundary.
+It is disabled unless both `LLM_BASE_URL` and `LLM_MODEL` are configured. Set
+`LLM_API_KEY` in the agent process environment only when the endpoint requires it;
+never commit API keys. Docker Compose passes these variables through to the agent.
+Malformed plans and request failures fall back to the deterministic reasoner.
+
+The model produces a structured plan rather than executing arbitrary commands.
 
 The safe path is:
 

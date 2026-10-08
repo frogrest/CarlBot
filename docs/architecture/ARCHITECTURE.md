@@ -72,6 +72,18 @@ Perform constrained reasoning for a domain. They return structured findings inst
 ### Model adapter
 
 Allows deterministic reasoning now and LLM reasoning later without rewriting the tool layer.
+The Phase 4 adapter implements `Reasoner.propose(ctx) -> Plan`: the deterministic
+reasoner preserves the existing decision table, while the optional OpenAI-compatible
+HTTP adapter is enabled only when both `LLM_BASE_URL` and `LLM_MODEL` are configured.
+`LLM_API_KEY` is read from the environment and is never stored in source. The adapter
+loads the checked-in orchestrator and common-specialist prompts, sends only bounded
+incident fields and evidence, and accepts only the strict `Plan`/`ActionProposal`
+schema. Malformed output, unknown actions, foreign evidence/asset references, or
+request failures are logged and fall back to deterministic reasoning.
+
+The model has no tools, shell, or direct environment access. Its plan is only a
+proposal: evidence review and `PolicyEngine.decide()` remain independent gates before
+the ToolBus can run one of the two registered simulated actions.
 
 ### Policy engine
 

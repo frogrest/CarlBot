@@ -30,6 +30,9 @@ services:
       DOCS_ROOT: /app/docs
       AGENT_DB: /app/data/agent.db
       AGENT_POLL_INTERVAL: "5"
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
     ports:
       - "8002:8002"
     volumes:
