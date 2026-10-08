@@ -7,12 +7,15 @@ services:
       - "8000:8000"
     environment:
       TICKET_REFERENCE_CSV: "/app/reference/ticketreference examples.csv"
+      DOCS_ROOT: "/app/docs"
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_MODEL: ${LLM_MODEL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
     volumes:
       - ./data:/app/data
       - ./reference:/app/reference:ro
+      - ./docs:/app/docs:ro
+      - ./prompts:/app/prompts:ro
     restart: unless-stopped
 
   portal:

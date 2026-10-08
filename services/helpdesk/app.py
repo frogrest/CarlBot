@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
+from services.helpdesk.chat_knowledge import KnowledgeRetriever
 from services.helpdesk.chat_reasoner import answer_with_reasoning
 from services.helpdesk.ticket_chat import query_tickets
 
@@ -46,9 +47,18 @@ CREATE TABLE IF NOT EXISTS notes (
   body TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS customer_replies (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id INTEGER NOT NULL,
+  author TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  idempotency_key TEXT UNIQUE
+);
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_asset ON tickets(asset_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_updated ON tickets(updated_at);
+CREATE INDEX IF NOT EXISTS idx_customer_replies_ticket ON customer_replies(ticket_id);
 '''
 
 NOW = '2026-09-29T20:55:00+00:00'
@@ -142,9 +152,21 @@ class NoteCreate(BaseModel):
     body: str = Field(min_length=1)
 
 
+class CustomerReplyCreate(BaseModel):
+    author: str = 'technician'
+    body: str = Field(min_length=1, max_length=1500)
+    idempotency_key: Optional[str] = Field(default=None, max_length=100)
+
+
+class ChatTurn(BaseModel):
+    role: str = Field(pattern=r'^(user|assistant)$')
+    content: str = Field(min_length=1, max_length=1000)
+
+
 class TicketChatQuery(BaseModel):
     message: str = Field(min_length=1, max_length=500)
     ticket_id: Optional[int] = Field(default=None, gt=0)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=10)
 
 
 def utc_now() -> str:
@@ -268,9 +290,14 @@ def get_ticket(ticket_id: int):
         con.close()
         raise HTTPException(404, 'Ticket not found')
     notes = con.execute('SELECT author,body,created_at FROM notes WHERE ticket_id=? ORDER BY id', (ticket_id,)).fetchall()
+    replies = con.execute(
+        'SELECT id,ticket_id,author,body,created_at,idempotency_key FROM customer_replies WHERE ticket_id=? ORDER BY id',
+        (ticket_id,),
+    ).fetchall()
     con.close()
     result = dict(row)
     result['notes'] = [dict(n) for n in notes]
+    result['customer_replies'] = [dict(r) for r in replies]
     return result
 
 
@@ -291,6 +318,41 @@ def search(q: str, asset_id: Optional[str] = None, limit: int = 10):
     return {'results': [dict(r) for r in rows]}
 
 
+@app.get('/api/knowledge')
+def get_knowledge_documents():
+    retriever = KnowledgeRetriever()
+    if not retriever.root.is_dir():
+        return {'documents': []}
+
+    from services.helpdesk.chat_knowledge import APPROVED_SUBDIRS, _parse_sections
+    docs = []
+    for path in sorted(retriever.root.rglob('*.md')):
+        try:
+            rel = path.relative_to(retriever.root)
+        except ValueError:
+            continue
+        parts = rel.parts
+        if not parts or parts[0] not in APPROVED_SUBDIRS:
+            continue
+        try:
+            text = path.read_text(encoding='utf-8', errors='ignore')
+        except OSError:
+            continue
+        sections = _parse_sections(text, rel.as_posix())
+        title = path.stem.replace('_', ' ').replace('-', ' ').title()
+        if sections and sections[0].get('title'):
+            title = sections[0]['title']
+        docs.append({
+            'id': rel.as_posix().replace('/', '-').replace('.', '-').lower(),
+            'title': title,
+            'category': parts[0],
+            'source_path': f'docs/{rel.as_posix()}',
+            'sections': sections,
+            'raw_text': text,
+        })
+    return {'documents': docs}
+
+
 @app.post('/api/chat/query')
 def chat_query(payload: TicketChatQuery):
     message = payload.message.strip()
@@ -307,7 +369,12 @@ def chat_query(payload: TicketChatQuery):
                 'SELECT author,body,created_at FROM notes WHERE ticket_id=? ORDER BY id',
                 (ticket['id'],),
             ).fetchall()
+            replies = con.execute(
+                'SELECT author,body,created_at FROM customer_replies WHERE ticket_id=? ORDER BY id',
+                (ticket['id'],),
+            ).fetchall()
             ticket['notes'] = [dict(note) for note in notes]
+            ticket['customer_replies'] = [dict(reply) for reply in replies]
     finally:
         con.close()
 
@@ -315,10 +382,18 @@ def chat_query(payload: TicketChatQuery):
         result = query_tickets(message, tickets, context_ticket_id=payload.ticket_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
+
+    # Retrieve approved local knowledge documentation
+    retriever = KnowledgeRetriever()
+    # Search using user query and any issue words
+    knowledge_sources = retriever.search(message, limit=3)
+
     return answer_with_reasoning(
         message,
         result,
         context_ticket_id=payload.ticket_id,
+        conversation_history=[turn.model_dump() for turn in payload.history],
+        knowledge_sources=knowledge_sources,
     )
 
 
@@ -356,6 +431,56 @@ def add_note(ticket_id: int, payload: NoteCreate):
     con.commit()
     con.close()
     return {'ok': True, 'ticket_id': ticket_id}
+
+
+@app.post('/api/tickets/{ticket_id}/customer-replies')
+def add_customer_reply(ticket_id: int, payload: CustomerReplyCreate):
+    con = connect()
+    if con.execute('SELECT 1 FROM tickets WHERE id=?', (ticket_id,)).fetchone() is None:
+        con.close()
+        raise HTTPException(404, 'Ticket not found')
+
+    # If idempotency_key is supplied and already recorded, return the existing reply safely
+    if payload.idempotency_key:
+        existing = con.execute(
+            'SELECT id,ticket_id,author,body,created_at,idempotency_key FROM customer_replies WHERE idempotency_key=?',
+            (payload.idempotency_key,),
+        ).fetchone()
+        if existing:
+            con.close()
+            return {'ok': True, 'ticket_id': ticket_id, 'reply': dict(existing), 'duplicate': True}
+
+    now = utc_now()
+    try:
+        cur = con.execute(
+            'INSERT INTO customer_replies(ticket_id,author,body,created_at,idempotency_key) VALUES (?,?,?,?,?)',
+            (ticket_id, payload.author, payload.body, now, payload.idempotency_key),
+        )
+        con.commit()
+        reply_id = cur.lastrowid
+    except sqlite3.IntegrityError:
+        # Idempotency collision
+        existing = con.execute(
+            'SELECT id,ticket_id,author,body,created_at,idempotency_key FROM customer_replies WHERE idempotency_key=?',
+            (payload.idempotency_key,),
+        ).fetchone()
+        con.close()
+        if existing:
+            return {'ok': True, 'ticket_id': ticket_id, 'reply': dict(existing), 'duplicate': True}
+        raise HTTPException(409, 'Conflict on idempotency key')
+    con.close()
+    return {
+        'ok': True,
+        'ticket_id': ticket_id,
+        'reply': {
+            'id': reply_id,
+            'ticket_id': ticket_id,
+            'author': payload.author,
+            'body': payload.body,
+            'created_at': now,
+            'idempotency_key': payload.idempotency_key,
+        },
+    }
 
 
 @app.post('/api/tickets/{ticket_id}/request-verification')

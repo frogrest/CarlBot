@@ -1,11 +1,4 @@
-# FILE MANIFEST — AI Helpdesk Agent Package
-# Generated from git ls-files --cached --others --exclude-standard.
-# Screenshot reference is reference/screenshots/reference.pdf.
-
 .github/prompts/advance-carlbot-copilot.prompt.md
-prompts/chatbot_system.md
-services/helpdesk/chat_reasoner.py
-tests/test_chat_reasoner.py
 .github/skills/frontend-visual-qa/SKILL.md
 .github/skills/impeccable/SKILL.md
 .github/skills/taste/SKILL.md
@@ -23,7 +16,16 @@ README.md
 SETUP_AND_DEVELOPMENT.md
 data/.gitkeep
 docker-compose.yml
+docs/AI-Box/AIBOX_ANALYTICS.md
+docs/Cameras/IP_CAMERAS_AND_ONVIF.md
+docs/NVR/NVR_ARCHITECTURE.md
+docs/Networking/NETWORK_PROTOCOLS_AND_COMMANDS.md
+docs/Networking/POE_AND_CONNECTIVITY.md
+docs/Networking/REBOOT_VS_POWERCYCLE.md
 docs/README.md
+docs/RTSP/RTSP_STREAMING.md
+docs/SOP/OFFLINE_INCIDENT_PLAYBOOK.md
+docs/SOP/SYSTEM_OVERVIEW.md
 docs/architecture/ARCHITECTURE.md
 docs/architecture/KNOWLEDGE_SYSTEM.md
 docs/architecture/ORCHESTRATOR.md
@@ -53,7 +55,12 @@ frontend/package.json
 frontend/src/App.css
 frontend/src/App.tsx
 frontend/src/api.ts
+frontend/src/components/CarlBotChatView.tsx
+frontend/src/components/DashboardView.tsx
+frontend/src/components/KnowledgeView.tsx
+frontend/src/components/TasksView.tsx
 frontend/src/index.css
+frontend/src/knowledgeData.ts
 frontend/src/main.tsx
 frontend/src/types.ts
 frontend/tsconfig.app.json
@@ -67,6 +74,7 @@ legacy/README_v03.md
 legacy/SETUP_AND_DEVELOPMENT_v03.md
 prompts/aibox_agent.md
 prompts/camera_nvr_agent.md
+prompts/chatbot_system.md
 prompts/evidence_agent.md
 prompts/helpdesk_agent.md
 prompts/knowledge_agent.md
@@ -81,10 +89,12 @@ reference/screenshots/reference.pdf
 requirements.txt
 scripts/connect_github.ps1
 scripts/phase0_bootstrap.ps1
+scripts/run_evaluation.py
 services/__init__.py
 services/agent/Dockerfile
 services/agent/__init__.py
 services/agent/core.py
+services/agent/evaluation.py
 services/agent/knowledge.py
 services/agent/main.py
 services/agent/orchestrator/__init__.py
@@ -108,11 +118,15 @@ services/agent/tools/bus.py
 services/helpdesk/Dockerfile
 services/helpdesk/__init__.py
 services/helpdesk/app.py
+services/helpdesk/chat_knowledge.py
+services/helpdesk/chat_reasoner.py
 services/helpdesk/ticket_chat.py
 services/portal/Dockerfile
 services/portal/__init__.py
 services/portal/app.py
 tests/conftest.py
+tests/test_chat_reasoner.py
+tests/test_evaluation_matrix.py
 tests/test_helpdesk_api.py
 tests/test_monitor_dedup.py
 tests/test_orchestrator.py

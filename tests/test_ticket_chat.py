@@ -226,3 +226,234 @@ def test_chat_keeps_broad_search_results_brief(helpdesk):
     assert 'more match' in answer
     assert 'What the ticket says' not in answer
     assert len(answer) < 500
+
+
+def test_chat_retrieves_and_cites_approved_knowledge_documents(helpdesk, monkeypatch, tmp_path):
+    # Setup a mock docs folder with approved and unapproved folders
+    docs_dir = tmp_path / 'docs'
+    docs_dir.mkdir()
+    sop_dir = docs_dir / 'SOP'
+    sop_dir.mkdir()
+    (sop_dir / 'rtsp_stream_guide.md').write_text(
+        "# RTSP Stream Procedure\n\n## Verification\nCheck video reception in emulator for 60 seconds.",
+        encoding='utf-8',
+    )
+    unapproved_dir = docs_dir / 'internal_secrets'
+    unapproved_dir.mkdir()
+    (unapproved_dir / 'admin_notes.md').write_text(
+        "# Top Secret\nDo not expose this information.",
+        encoding='utf-8',
+    )
+
+    monkeypatch.setenv('DOCS_ROOT', str(docs_dir))
+
+    # Query for RTSP Stream Procedure
+    response = helpdesk.post('/api/chat/query', json={
+        'message': 'What is the RTSP stream verification procedure?',
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert 'knowledge_sources' in data
+    assert any('rtsp_stream_guide.md' in doc['source_path'] for doc in data['knowledge_sources'])
+    assert all('admin_notes.md' not in doc['source_path'] for doc in data['knowledge_sources'])
+    assert any('RTSP Stream Procedure' in doc['section_title'] or 'Verification' in doc['section_title'] for doc in data['knowledge_sources'])
+
+
+def test_chat_multi_turn_history_context_used(helpdesk):
+    ticket_id = 1002
+    response = helpdesk.post('/api/chat/query', json={
+        'message': 'Tell me more about the credentials problem.',
+        'ticket_id': ticket_id,
+        'history': [
+            {'role': 'user', 'content': 'Is there an issue with camera 18?'},
+            {'role': 'assistant', 'content': 'Yes, ticket 1002 records an RTSP credentials issue.'},
+        ],
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data['cited_ticket_ids'] == ['1002']
+    assert '1002' in data['answer']
+
+
+def test_chat_drafts_reply_only_on_explicit_request_with_selected_ticket(helpdesk):
+    ticket_id = 1001
+    # 1. Without explicit reply request, draft is None
+    res1 = helpdesk.post('/api/chat/query', json={
+        'message': 'What is the current status of this camera?',
+        'ticket_id': ticket_id,
+    })
+    assert res1.status_code == 200
+    assert res1.json().get('ticket_reply_draft') is None
+
+    # 2. With explicit reply request and selected ticket, draft is generated
+    res2 = helpdesk.post('/api/chat/query', json={
+        'message': 'Please draft a reply to the customer explaining the status.',
+        'ticket_id': ticket_id,
+    })
+    assert res2.status_code == 200
+    draft = res2.json().get('ticket_reply_draft')
+    assert draft is not None
+    assert 'CAM-027' in draft or '1001' in draft or 'investigation' in draft.lower()
+
+    # 3. With explicit reply request but NO ticket selected, draft is None
+    res3 = helpdesk.post('/api/chat/query', json={
+        'message': 'Draft a response for the customer.',
+    })
+    assert res3.status_code == 200
+    assert res3.json().get('ticket_reply_draft') is None
+
+
+def test_customer_reply_publish_and_idempotency(helpdesk):
+    ticket_id = 1001
+    # Check ticket initial customer replies
+    ticket_before = helpdesk.get(f'/api/tickets/{ticket_id}').json()
+    initial_count = len(ticket_before.get('customer_replies', []))
+
+    # Publish reply
+    reply_payload = {
+        'author': 'technician',
+        'body': 'A technician has been dispatched to inspect the camera.',
+        'idempotency_key': 'test-idemp-key-1',
+    }
+    publish_res = helpdesk.post(f'/api/tickets/{ticket_id}/customer-replies', json=reply_payload)
+    assert publish_res.status_code == 200
+    data = publish_res.json()
+    assert data['ok'] is True
+    assert data['reply']['body'] == reply_payload['body']
+    assert data.get('duplicate') is not True
+
+    # Check that ticket contains this customer reply separately from notes
+    ticket_after = helpdesk.get(f'/api/tickets/{ticket_id}').json()
+    assert len(ticket_after['customer_replies']) == initial_count + 1
+    new_reply = ticket_after['customer_replies'][-1]
+    assert new_reply['body'] == reply_payload['body']
+    # Confirm it was not added to technician notes
+    assert all(n['body'] != reply_payload['body'] for n in ticket_after['notes'])
+
+    # Duplicate publish with same idempotency key returns cleanly without creating a second record
+    dup_res = helpdesk.post(f'/api/tickets/{ticket_id}/customer-replies', json=reply_payload)
+    assert dup_res.status_code == 200
+    assert dup_res.json().get('duplicate') is True
+
+    ticket_dup_check = helpdesk.get(f'/api/tickets/{ticket_id}').json()
+    assert len(ticket_dup_check['customer_replies']) == initial_count + 1
+
+
+def test_chat_greeting_companion_response(helpdesk):
+    # Greeting without ticket context
+    res1 = helpdesk.post('/api/chat/query', json={'message': 'hello'})
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1['answer'] == "Hello, I'm Carlbot, ask me anything about the Helpdesk"
+
+    # Greeting with ticket context
+    res2 = helpdesk.post('/api/chat/query', json={'message': 'hi CarlBot', 'ticket_id': 1001})
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2['answer'] == "Hello, I'm Carlbot, ask me anything about the Helpdesk" 
+
+
+def test_chat_terminology_explanations(helpdesk):
+    # RTSP explanation
+    rtsp_res = helpdesk.post('/api/chat/query', json={'message': 'whats rtsp'})
+    assert rtsp_res.status_code == 200
+    rtsp_data = rtsp_res.json()
+    assert 'Real-Time Streaming Protocol' in rtsp_data['answer']
+    assert 'port 554' in rtsp_data['answer']
+    assert 'reconnect-rtsp' in rtsp_data['answer']
+
+    # NVR explanation
+    nvr_res = helpdesk.post('/api/chat/query', json={'message': 'what is an nvr'})
+    assert nvr_res.status_code == 200
+    nvr_data = nvr_res.json()
+    assert 'Network Video Recorder' in nvr_data['answer']
+    assert 'Multi-Channel Ingestion' in nvr_data['answer']
+
+    # AI Box explanation
+    aibox_res = helpdesk.post('/api/chat/query', json={'message': 'what does ai box do'})
+    assert aibox_res.status_code == 200
+    aibox_data = aibox_res.json()
+    assert 'AI Box is an on-premises edge computing' in aibox_data['answer']
+    assert 'restart-ai-service' in aibox_data['answer']
+
+    # PoE explanation
+    poe_res = helpdesk.post('/api/chat/query', json={'message': 'explain poe'})
+    assert poe_res.status_code == 200
+    poe_data = poe_res.json()
+    assert 'Power over Ethernet' in poe_data['answer']
+    assert '802.3af' in poe_data['answer']
+    assert 'pending_technician' in poe_data['answer']
+
+
+def test_chat_off_topic_guardrail(helpdesk):
+    res = helpdesk.post('/api/chat/query', json={'message': 'write a poem about flowers'})
+    assert res.status_code == 200
+    data = res.json()
+    assert "dedicated to this surveillance and helpdesk lab" in data['answer']
+    assert "not able to assist with general topics" in data['answer']
+
+
+def test_chat_cites_approved_knowledge_for_terminologies(helpdesk):
+    res = helpdesk.post('/api/chat/query', json={'message': 'what is rtsp'})
+    assert res.status_code == 200
+    data = res.json()
+    assert any('docs/RTSP/RTSP_STREAMING.md' in doc['source_path'] for doc in data['knowledge_sources'])
+    assert any('docs/RTSP/RTSP_STREAMING.md' in cited for cited in data['cited_knowledge_sources'])
+
+def test_chat_network_protocols_and_ip_commands(helpdesk):
+    # Network protocols
+    proto_res = helpdesk.post('/api/chat/query', json={'message': 'what network protocols are used in the system'})
+    assert proto_res.status_code == 200
+    proto_data = proto_res.json()
+    assert 'TCP vs. UDP' in proto_data['answer']
+    assert 'RTSP (Port 554)' in proto_data['answer']
+    assert 'NTP (Port 123)' in proto_data['answer']
+    assert any('NETWORK_PROTOCOLS_AND_COMMANDS.md' in doc['source_path'] for doc in proto_data['knowledge_sources'])
+
+    # IP commands
+    cmd_res = helpdesk.post('/api/chat/query', json={'message': 'what ip commands should a technician use'})
+    assert cmd_res.status_code == 200
+    cmd_data = cmd_res.json()
+    assert 'ping <ip>' in cmd_data['answer']
+    assert 'arp -a' in cmd_data['answer']
+    assert 'ipconfig' in cmd_data['answer']
+    assert 'traceroute' in cmd_data['answer']
+
+
+def test_chat_reboot_vs_powercycle(helpdesk):
+    res = helpdesk.post('/api/chat/query', json={'message': 'what is the difference between reboot and power cycle'})
+    assert res.status_code == 200
+    data = res.json()
+    assert 'Reboot (Soft Reboot' in data['answer']
+    assert 'Power Cycle (Hard Reboot' in data['answer']
+    assert '15–30 seconds' in data['answer']
+    assert 'poe_bounce' in data['answer']
+    assert any('REBOOT_VS_POWERCYCLE.md' in doc['source_path'] for doc in data['knowledge_sources'])
+
+
+def test_chat_offline_incident_sops(helpdesk):
+    # Offline Camera
+    cam_res = helpdesk.post('/api/chat/query', json={'message': 'what to do when a camera is offline'})
+    assert cam_res.status_code == 200
+    cam_data = cam_res.json()
+    assert 'Layer 1 (Physical & PoE)' in cam_data['answer']
+    assert 'ping <camera_ip>' in cam_data['answer']
+    assert 'port 554' in cam_data['answer']
+    assert 'pending_technician' in cam_data['answer']
+    assert any('OFFLINE_INCIDENT_PLAYBOOK.md' in doc['source_path'] for doc in cam_data['knowledge_sources'])
+
+    # Offline System / AI Box
+    sys_res = helpdesk.post('/api/chat/query', json={'message': 'what should the technician do when a system is offline'})
+    assert sys_res.status_code == 200
+    sys_data = sys_res.json()
+    assert 'ping <server_ip>' in sys_data['answer']
+    assert 'docker compose ps' in sys_data['answer']
+    assert 'restart-ai-service' in sys_data['answer']
+
+    # Offline Remote Desktop
+    rdp_res = helpdesk.post('/api/chat/query', json={'message': 'what to do when remote desktop is offline'})
+    assert rdp_res.status_code == 200
+    rdp_data = rdp_res.json()
+    assert 'port 3389' in rdp_data['answer']
+    assert 'Test-NetConnection' in rdp_data['answer']
+    assert 'KVM' in rdp_data['answer']

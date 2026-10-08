@@ -12,40 +12,39 @@ screen.
 ## Implemented now
 
 - The Helpdesk `POST /api/chat/query` endpoint reads live tickets, selected
-  ticket details and up to 20 notes, plus an optional local metadata-only CSV
-  export. The chat does not receive the full ticket conversation history as
-  multi-turn context.
+  ticket details and up to 20 notes, recorded customer replies, plus an optional
+  local metadata-only CSV export.
+- Bounded multi-turn context: the chat client sends recent conversational turns
+  (up to 6 turns) so follow-up questions are resolved in context.
+- Approved local knowledge retrieval: `KnowledgeRetriever` searches approved
+  markdown technical documentation and SOPs (e.g. `docs/SOP/`, `docs/RTSP/`, etc.),
+  returning section titles, repository-relative paths, and locators (line ranges).
+  Arbitrary filesystem paths, internal notes, and unapproved directories are excluded.
+- Grounded customer reply drafting: when an operator explicitly requests a reply
+  draft and a ticket is selected, CarlBot generates an editable preview draft.
+  Drafts are never published automatically. Publishing requires explicit operator
+  review and confirmation via the "Publish to simulated ticket" button, which posts
+  to `/api/tickets/{id}/customer-replies`.
+- Published replies are stored in a dedicated `customer_replies` SQLite table and
+  displayed with a distinct visual badge in the ticket conversation, kept separate
+  from internal technician notes. Idempotency keys prevent duplicate submission.
 - Deterministic record-based answers work without an LLM. When explicitly
   configured, the optional structured LLM responder uses bounded retrieved
   ticket context, redacts credential-like values and emails, validates ticket
-  citations and restricted recommendations, and falls back to deterministic
-  answers when it cannot return an acceptable result.
-- Answers can cite linked live tickets and suggest next steps. Those
-  recommendations are advice only; chat cannot invoke tools, the Portal, or
+  and document citations and restricted recommendations, and falls back to
+  deterministic answers when it cannot return an acceptable result.
+- Answers cite linked live tickets, cited approved documentation, and suggest next steps.
+  Those recommendations are advice only; chat cannot invoke tools, the Portal, or
   the agent.
 - `/clear` clears the browser conversation only. Chat is read-only: it cannot
-  add a ticket note or customer-facing reply, change status, or otherwise
-  write to ticket records.
-- CarlBot appears above AI Copilot in the right sidebar and follows new
-  messages while preserving scrollable history.
-
-## Planned next — not implemented
-
-The next chatbot enhancement is defined in
-[`advance-carlbot-copilot.prompt.md`](../../.github/prompts/advance-carlbot-copilot.prompt.md).
-It is a coding-agent task prompt, not a claim that the following features
-already exist:
-
-- approved local knowledge retrieval with source metadata and citations;
-- bounded multi-turn context for follow-up questions;
-- a customer-facing reply draft with an editable preview and an explicit
-  technician confirmation before publishing to a separate customer-visible
-  record in the simulated local ticket thread.
-
-The reply feature must remain local to the fake helpdesk. It must not send
-email, contact an external helpdesk, automatically change ticket status, or
-invoke agent actions. Until implemented and tested, CarlBot remains read-only
-and cannot publish a ticket reply.
+  automatically add a ticket note or customer-facing reply, change status, or
+  otherwise write to ticket records.
+- CarlBot appears in two modes:
+  1. Embedded in the ticket workspace (beside the ticket queue and ticket detail views).
+  2. A dedicated, full-screen ChatGPT-style copilot view accessible via the `◈ CarlBot AI`
+     primary navigation tab (`CarlBotChatView.tsx`), equipped with modern prompt starters,
+     a ticket context selector dropdown, full conversational history, and 1-click
+     navigation to referenced SOP documents.
 
 Examples:
 
@@ -117,6 +116,20 @@ Examples:
 - Use CSS for small message-arrival and input-focus transitions. Respect the
   operating system's reduced-motion preference and avoid decorative or
   continuous motion.
+
+## Dedicated ChatGPT-Style View (`◈ CarlBot AI`)
+
+In addition to the sidebar in the ticket queue and ticket detail views, the application features a dedicated, full-page ChatGPT-style conversational workspace accessible from the top navigation bar (`CarlBotChatView.tsx`):
+
+- **Header Bar**: Displays CarlBot branding, active emulator status tag, an active ticket context selector dropdown, and a `+ New Chat` action.
+- **Context Binding**: Technicians can converse in system-wide mode or bind reasoning directly to any active ticket from the dropdown without leaving the chat page.
+- **Prompt Starter Grid**: When starting a fresh session, four prompt cards guide quick exploration:
+  1. *Camera Offline Playbook* — Stepwise diagnostic and handoff triage for unreachable IP cameras.
+  2. *Reboot vs. Power Cycling* — When to warm reboot via software vs cold power-cycle PoE switch ports.
+  3. *RTSP & Port 554 Protocol* — Streaming specifications, transport modes (TCP/UDP), and authentication.
+  4. *IP Diagnostic Commands* — Essential CLI networking tools (ping, curl, ffprobe, ip, arp, tcpdump).
+- **Rich Message Stream**: Displays conversational bubbles with CarlBot avatar, expandable recommendation callouts, cited SOP/document chips linking to source lines, ticket reference tags, and human-confirmed customer reply draft cards.
+- **Bottom Composer**: Fixed floating chat input with auto-focus, send trigger, `/clear` command support, and explicit operational safety disclaimer reminding technicians that actions are local and read-only.
 
 ## Read-only boundary
 

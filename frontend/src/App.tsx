@@ -1,22 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
 import {
+  addCustomerReply,
   addTicketNote,
   getAgentStatus,
   getTicket,
   listAssets,
+  listKnowledgeDocuments,
+  listPortalEvents,
   listTickets,
   queryTickets,
   runAssetDiagnostics,
+  runMonitorNow,
   resetSimulation,
   runInvestigation,
   simulateFault,
   updateTicketDeskStatus,
 } from './api'
-import type { DiagnosticProbe, TicketChatMatch, TicketChatRecommendation } from './api'
-import type { AgentStatus, Asset, Ticket, TicketDeskStatus, TicketStatus } from './types'
+import type { ChatTurn, DiagnosticProbe, KnowledgeSource, TicketChatMatch, TicketChatRecommendation } from './api'
+import type { AgentStatus, Asset, KnowledgeDocument, PortalEvent, Ticket, TicketDeskStatus, TicketStatus } from './types'
+import { fallbackKnowledgeDocuments } from './knowledgeData'
+import { DashboardView } from './components/DashboardView'
+import { TasksView } from './components/TasksView'
+import { KnowledgeView } from './components/KnowledgeView'
+import { CarlBotChatView } from './components/CarlBotChatView'
 import './App.css'
 
-type View = 'tickets' | 'assets'
+type View = 'dashboard' | 'tickets' | 'tasks' | 'knowledge' | 'assets' | 'carlbot'
 type ServiceName = 'helpdesk' | 'portal' | 'agent'
 type ServiceErrors = Partial<Record<ServiceName, string>>
 
@@ -51,6 +60,9 @@ type ChatMessage = {
   matches?: TicketChatMatch[]
   recommendations?: TicketChatRecommendation[]
   citedTicketIds?: string[]
+  citedKnowledgeSources?: string[]
+  knowledgeSources?: KnowledgeSource[]
+  ticketReplyDraft?: string | null
   reasoningMode?: 'llm' | 'deterministic'
 }
 
@@ -107,6 +119,9 @@ function Signal({ ok, label }: { ok: boolean; label: string }) {
 
 function App() {
   const [view, setView] = useState<View>('tickets')
+  const [events, setEvents] = useState<PortalEvent[]>([])
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>(fallbackKnowledgeDocuments)
+  const [isMonitoring, setIsMonitoring] = useState(false)
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null)
@@ -130,7 +145,7 @@ function App() {
   const [isChangingLabState, setIsChangingLabState] = useState<string | null>(null)
   const [chatDraft, setChatDraft] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', text: 'Hi, I can reason from ticket details and recorded conversation, suggest next steps, and link the records I used. Ask about a site, camera, or ticket number.' },
+    { role: 'assistant', text: "Hello, I'm Carlbot, ask me anything about the Helpdesk" },
   ])
   const [isChatLoading, setIsChatLoading] = useState(false)
   const chatMessagesRef = useRef<HTMLDivElement>(null)
@@ -141,10 +156,12 @@ function App() {
   }, [chatMessages, isChatLoading])
 
   const refreshWorkspace = useCallback(async () => {
-    const [ticketResult, assetResult, agentResult] = await Promise.allSettled([
+    const [ticketResult, assetResult, agentResult, eventResult, knowledgeResult] = await Promise.allSettled([
       listTickets(),
       listAssets(),
       getAgentStatus(),
+      listPortalEvents(),
+      listKnowledgeDocuments(),
     ])
 
     setServiceErrors((current) => {
@@ -163,6 +180,10 @@ function App() {
     }
     if (assetResult.status === 'fulfilled') setAssets(assetResult.value)
     if (agentResult.status === 'fulfilled') setAgentStatus(agentResult.value)
+    if (eventResult.status === 'fulfilled') setEvents(eventResult.value)
+    if (knowledgeResult.status === 'fulfilled' && knowledgeResult.value.length > 0) {
+      setKnowledgeDocs(knowledgeResult.value)
+    }
     setIsLoading(false)
   }, [])
 
@@ -339,16 +360,30 @@ function App() {
       return
     }
     setChatDraft('')
-    setChatMessages((messages) => [...messages, { role: 'user', text: message }])
+    const nextUserMessage: ChatMessage = { role: 'user', text: message }
+    const updatedMessages = [...chatMessages, nextUserMessage]
+    setChatMessages(updatedMessages)
     setIsChatLoading(true)
+
+    // Build bounded recent conversational history (up to 6 turns)
+    const historyPayload: ChatTurn[] = updatedMessages
+      .slice(-7, -1)
+      .map((msg) => ({
+        role: msg.role,
+        content: msg.text,
+      }))
+
     try {
-      const result = await queryTickets(message, selectedTicketId)
+      const result = await queryTickets(message, selectedTicketId, historyPayload)
       setChatMessages((messages) => [...messages, {
         role: 'assistant',
         text: result.answer,
         matches: result.matches,
         recommendations: result.recommendations,
         citedTicketIds: result.cited_ticket_ids,
+        citedKnowledgeSources: result.cited_knowledge_sources,
+        knowledgeSources: result.knowledge_sources,
+        ticketReplyDraft: result.ticket_reply_draft,
         reasoningMode: result.reasoning_mode,
       }])
     } catch (error) {
@@ -360,6 +395,65 @@ function App() {
     } finally {
       setIsChatLoading(false)
     }
+  }
+
+  async function handlePublishReply(ticketId: number, body: string, messageIndex: number) {
+    if (!ticketId || !body.trim()) return
+    const idempotencyKey = `reply-${ticketId}-${Date.now()}`
+    try {
+      const res = await addCustomerReply(ticketId, body.trim(), idempotencyKey)
+      setNotice(res.duplicate ? 'Simulated reply was already published.' : 'Published to simulated ticket thread.')
+      // Clear the draft preview from this message once published
+      setChatMessages((prev) => prev.map((msg, idx) => (
+        idx === messageIndex ? { ...msg, ticketReplyDraft: null } : msg
+      )))
+      setRefreshKey((k) => k + 1)
+      await refreshWorkspace()
+    } catch (error) {
+      setNotice(`Failed to publish reply: ${error instanceof Error ? error.message : 'Helpdesk service error'}`)
+    }
+  }
+
+  function handleCancelDraft(messageIndex: number) {
+    setChatMessages((prev) => prev.map((msg, idx) => (
+      idx === messageIndex ? { ...msg, ticketReplyDraft: null } : msg
+    )))
+  }
+
+  const handleTriggerMonitor = async () => {
+    setIsMonitoring(true)
+    try {
+      await runMonitorNow()
+      setNotice('Agent monitor cycle completed successfully.')
+      await refreshWorkspace()
+    } catch (error) {
+      setNotice(`Monitor request failed: ${error instanceof Error ? error.message : 'Agent service error'}`)
+    } finally {
+      setIsMonitoring(false)
+    }
+  }
+
+  const handleNavigate = (
+    targetView: View,
+    filter?: { site?: string; status?: TicketDeskStatus | 'all' }
+  ) => {
+    if (filter?.site) setSiteFilter(filter.site)
+    if (filter?.status) setStatusFilter(filter.status)
+    if (targetView === 'tickets') {
+      setSelectedTicketId(null)
+      setTicketDetail(null)
+    }
+    setView(targetView)
+  }
+
+  const handleAskCarlBot = (prompt: string) => {
+    setChatDraft(prompt)
+    setSelectedTicketId(null)
+    setView('tickets')
+    setTimeout(() => {
+      const inputEl = document.querySelector<HTMLInputElement>('.chat-form input')
+      if (inputEl) inputEl.focus()
+    }, 100)
   }
 
   function selectTicket(ticketId: number) {
@@ -391,6 +485,8 @@ function App() {
       setChatDraft={setChatDraft}
       onChat={handleChat}
       onOpenTicket={selectTicket}
+      onPublishReply={handlePublishReply}
+      onCancelDraft={handleCancelDraft}
     />
   )
 
@@ -412,11 +508,24 @@ function App() {
       </header>
 
       <nav className="primary-nav" aria-label="Primary navigation">
-        <button className="nav-item nav-disabled" type="button" disabled title="Not available in this preview"><span className="nav-glyph">⌂</span>Dashboard</button>
-        <button className="nav-item nav-disabled" type="button" disabled title="Not available in this preview"><span className="nav-glyph">◷</span>Tasks</button>
-        <button className={`nav-item ${view === 'tickets' ? 'nav-active' : ''}`} type="button" onClick={returnToQueue}><span className="nav-glyph">▤</span>Tickets <span className="nav-count">{openCount}</span></button>
-        <button className={`nav-item ${view === 'assets' ? 'nav-active' : ''}`} type="button" onClick={() => setView('assets')}><span className="nav-glyph">⌘</span>Assets</button>
-        <button className="nav-item nav-disabled" type="button" disabled title="Not available in this preview"><span className="nav-glyph">▧</span>Knowledge</button>
+        <button className={`nav-item ${view === 'dashboard' ? 'nav-active' : ''}`} type="button" onClick={() => setView('dashboard')}>
+          <span className="nav-glyph">⌂</span>Dashboard
+        </button>
+        <button className={`nav-item ${view === 'tasks' ? 'nav-active' : ''}`} type="button" onClick={() => setView('tasks')}>
+          <span className="nav-glyph">◷</span>Tasks {agentStatus?.recent_runs.length ? <span className="nav-count">{agentStatus.recent_runs.length}</span> : null}
+        </button>
+        <button className={`nav-item ${view === 'tickets' ? 'nav-active' : ''}`} type="button" onClick={returnToQueue}>
+          <span className="nav-glyph">▤</span>Tickets <span className="nav-count">{openCount}</span>
+        </button>
+        <button className={`nav-item ${view === 'assets' ? 'nav-active' : ''}`} type="button" onClick={() => setView('assets')}>
+          <span className="nav-glyph">⌘</span>Assets
+        </button>
+        <button className={`nav-item ${view === 'knowledge' ? 'nav-active' : ''}`} type="button" onClick={() => setView('knowledge')}>
+          <span className="nav-glyph">▧</span>Knowledge <span className="nav-count">{knowledgeDocs.length}</span>
+        </button>
+        <button className={`nav-item ${view === 'carlbot' ? 'nav-active' : ''}`} type="button" onClick={() => setView('carlbot')}>
+          <span className="nav-glyph">◈</span>CarlBot AI
+        </button>
         <span className="nav-spacer" />
         <span className="nav-section-label">WORKSPACE</span>
         <span className="nav-user">{siteOptions.length} emulated sites</span>
@@ -424,11 +533,15 @@ function App() {
 
       <div className="ticket-toolbar">
         <div className="toolbar-links">
+          <button className={view === 'dashboard' ? 'toolbar-active' : ''} onClick={() => setView('dashboard')} type="button">Dashboard</button>
           <button className={view === 'tickets' && statusFilter === 'Open' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('Open') }} type="button">Open <span>{openCount}</span></button>
           <button className={view === 'tickets' && statusFilter === 'Answered' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('Answered') }} type="button">Answered <span>{answeredCount}</span></button>
           <button className={view === 'tickets' && statusFilter === 'Closed' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('Closed') }} type="button">Closed <span>{closedCount}</span></button>
           <button className={view === 'tickets' && statusFilter === 'all' ? 'toolbar-active' : ''} onClick={() => { returnToQueue(); setStatusFilter('all') }} type="button">All Tickets</button>
-          <button onClick={() => setView('assets')} type="button">Asset Inventory</button>
+          <button className={view === 'tasks' ? 'toolbar-active' : ''} onClick={() => setView('tasks')} type="button">Tasks</button>
+          <button className={view === 'knowledge' ? 'toolbar-active' : ''} onClick={() => setView('knowledge')} type="button">Knowledge</button>
+          <button className={view === 'carlbot' ? 'toolbar-active' : ''} onClick={() => setView('carlbot')} type="button">CarlBot AI</button>
+          <button className={view === 'assets' ? 'toolbar-active' : ''} onClick={() => setView('assets')} type="button">Asset Inventory</button>
         </div>
         <div className="toolbar-status">
           <Signal ok={!ticketError} label={ticketError ? 'Helpdesk offline' : 'Helpdesk connected'} />
@@ -440,7 +553,65 @@ function App() {
       {notice && <div className="notice-banner" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss message" type="button">×</button></div>}
 
       <main className="workspace">
-        {view === 'tickets' ? (
+        {view === 'carlbot' ? (
+          <CarlBotChatView
+            chatMessages={chatMessages}
+            chatDraft={chatDraft}
+            setChatDraft={setChatDraft}
+            onChat={handleChat}
+            isLoading={isChatLoading}
+            selectedTicketId={selectedTicketId}
+            setSelectedTicketId={setSelectedTicketId}
+            tickets={tickets}
+            onOpenTicket={selectTicket}
+            onPublishReply={handlePublishReply}
+            onCancelDraft={handleCancelDraft}
+            onClearChat={() => {
+              setChatMessages([])
+              setChatDraft('')
+              setNotice('Conversation context cleared. Ticket and system data were not changed.')
+            }}
+            onOpenKnowledgeDoc={(_sourcePath) => {
+              setView('knowledge')
+            }}
+          />
+        ) : view === 'dashboard' ? (
+          <DashboardView
+            tickets={tickets}
+            assets={assets}
+            events={events}
+            agentStatus={agentStatus}
+            onNavigate={handleNavigate}
+            onTriggerMonitor={handleTriggerMonitor}
+            isMonitoring={isMonitoring}
+            onOpenTicket={selectTicket}
+            onAskCarlBot={handleAskCarlBot}
+          />
+        ) : view === 'tasks' ? (
+          <TasksView
+            agentStatus={agentStatus}
+            onTriggerMonitor={handleTriggerMonitor}
+            isMonitoring={isMonitoring}
+            onOpenTicket={selectTicket}
+            onAskCarlBot={handleAskCarlBot}
+          />
+        ) : view === 'knowledge' ? (
+          <KnowledgeView
+            documents={knowledgeDocs}
+            onAskCarlBot={handleAskCarlBot}
+          />
+        ) : view === 'assets' ? (
+          <AssetInventory
+            assets={assets}
+            error={serviceErrors.portal}
+            isLoading={isLoading}
+            faultByAsset={faultByAsset}
+            setFaultByAsset={setFaultByAsset}
+            onSimulate={handleFaultChange}
+            onReset={handleResetAsset}
+            isChanging={isChangingLabState}
+          />
+        ) : (
           <section className={`ticket-page ${selectedTicketId === null ? 'ticket-page-with-chat' : ''}`}>
             {selectedTicketId === null ? (
               <TicketQueue
@@ -484,17 +655,6 @@ function App() {
             )}
             {selectedTicketId === null && ticketChat}
           </section>
-        ) : (
-          <AssetInventory
-            assets={assets}
-            error={serviceErrors.portal}
-            isLoading={isLoading}
-            faultByAsset={faultByAsset}
-            setFaultByAsset={setFaultByAsset}
-            onSimulate={handleFaultChange}
-            onReset={handleResetAsset}
-            isChanging={isChangingLabState}
-          />
         )}
       </main>
 
@@ -720,7 +880,7 @@ function TicketDetail({
       <div className="detail-layout">
         <div className="detail-main-column">
           <section className="content-card conversation-card">
-            <div className="section-heading"><div><span className="section-icon">☷</span><h2>Conversation</h2><span className="section-count">{(ticket.notes?.length ?? 0) + 1}</span></div><button className="text-button" type="button">Activity history⌄</button></div>
+            <div className="section-heading"><div><span className="section-icon">☷</span><h2>Conversation</h2><span className="section-count">{(ticket.notes?.length ?? 0) + (ticket.customer_replies?.length ?? 0) + 1}</span></div><button className="text-button" type="button">Activity history⌄</button></div>
             <article className="thread-item">
               <div className="thread-avatar reporter-avatar">R</div>
               <div className="thread-content">
@@ -735,6 +895,20 @@ function TicketDetail({
                 <div className="thread-content">
                   <div className="thread-author"><strong>{note.author}</strong><span className="author-tag">{note.author.toLowerCase().includes('agent') ? 'COPILOT' : 'TECHNICIAN'}</span><time>{formatDate(note.created_at)}</time></div>
                   <p className="note-body">{note.body}</p>
+                </div>
+              </article>
+            ))}
+            {ticket.customer_replies?.map((reply, index) => (
+              <article className="thread-item thread-customer-reply" key={`reply-${reply.id || index}`}>
+                <div className="thread-avatar customer-reply-avatar">✉</div>
+                <div className="thread-content">
+                  <div className="thread-author">
+                    <strong>{reply.author || 'Technician'}</strong>
+                    <span className="reply-badge">CUSTOMER-VISIBLE REPLY</span>
+                    <time>{formatDate(reply.created_at)}</time>
+                  </div>
+                  <p className="note-body">{reply.body}</p>
+                  <div className="thread-source"><span className="source-dot" /> Published to simulated ticket thread</div>
                 </div>
               </article>
             ))}
@@ -817,6 +991,7 @@ function TicketDetail({
 
 function TicketLookupChat({
   chatMessages, chatDraft, isLoading, messagesRef, selectedTicketId, setChatDraft, onChat, onOpenTicket,
+  onPublishReply, onCancelDraft,
 }: {
   chatMessages: ChatMessage[]
   chatDraft: string
@@ -826,20 +1001,25 @@ function TicketLookupChat({
   setChatDraft: (value: string) => void
   onChat: (event: FormEvent<HTMLFormElement>) => void
   onOpenTicket: (ticketId: number) => void
+  onPublishReply: (ticketId: number, body: string, messageIndex: number) => void
+  onCancelDraft: (messageIndex: number) => void
 }) {
+  const [draftEdits, setDraftEdits] = useState<Record<number, string>>({})
+  const [isPublishingIndex, setIsPublishingIndex] = useState<number | null>(null)
+
   return (
     <section
       className={`chat-card chat-lookup-global ${selectedTicketId !== null ? 'chat-in-detail' : ''}`}
       aria-labelledby="ticket-chat-title"
     >
       <div className="chat-heading">
-        <div><span className="chat-icon">✦</span><div className="chat-title-copy"><h2 id="ticket-chat-title">CarlBot</h2><span>Ticket reasoning assistant</span></div></div>
+        <div><span className="chat-icon">✦</span><div className="chat-title-copy"><h2 id="ticket-chat-title">CarlBot</h2><span>AI operations companion</span></div></div>
         <span className="chat-readonly">ADVICE ONLY</span>
       </div>
       <p className="chat-intro">
         {selectedTicketId
           ? `Using ticket #${selectedTicketId} and its recorded conversation as context.`
-          : 'Ask a question about a ticket, site, camera, or reported issue.'}
+          : 'Ask about tickets, RTSP, NVR, AI Box, PoE, or say hello.'}
         {' '}Suggestions do not run actions.
       </p>
       <div className="chat-messages" ref={messagesRef} role="log" aria-live="polite" aria-busy={isLoading}>
@@ -867,6 +1047,62 @@ function TicketLookupChat({
                     </li>
                   ))}
                 </ol>
+              </div>
+            )}
+            {message.knowledgeSources && message.knowledgeSources.length > 0 && (
+              <div className="chat-knowledge-links" aria-label="Referenced approved documentation">
+                <strong>Approved documentation cited</strong>
+                {message.knowledgeSources.map((doc, docIdx) => (
+                  <div className="chat-knowledge-item" key={`doc-${docIdx}`}>
+                    <span className="chat-knowledge-title">{doc.section_title}</span>
+                    <span className="chat-knowledge-loc">{doc.source_path} ({doc.locator})</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {message.ticketReplyDraft && selectedTicketId !== null && (
+              <div className="chat-reply-preview-card" aria-label="Customer reply draft preview">
+                <div className="chat-reply-preview-header">
+                  <strong>Proposed reply to customer (Ticket #{selectedTicketId})</strong>
+                  <span className="preview-badge">PREVIEW · UNPUBLISHED</span>
+                </div>
+                <textarea
+                  className="chat-reply-textarea"
+                  rows={4}
+                  value={draftEdits[index] !== undefined ? draftEdits[index] : message.ticketReplyDraft}
+                  onChange={(e) => setDraftEdits((prev) => ({ ...prev, [index]: e.target.value }))}
+                  aria-label="Editable customer reply draft"
+                />
+                <div className="chat-reply-preview-footer">
+                  <button
+                    className="button button-outline button-small"
+                    type="button"
+                    disabled={isPublishingIndex === index}
+                    onClick={() => onCancelDraft(index)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="button button-primary button-small"
+                    type="button"
+                    disabled={
+                      isPublishingIndex === index ||
+                      !(draftEdits[index] ?? message.ticketReplyDraft ?? '').trim()
+                    }
+                    onClick={async () => {
+                      const text = (draftEdits[index] ?? message.ticketReplyDraft ?? '').trim()
+                      if (!text || selectedTicketId === null) return
+                      setIsPublishingIndex(index)
+                      try {
+                        await onPublishReply(selectedTicketId, text, index)
+                      } finally {
+                        setIsPublishingIndex(null)
+                      }
+                    }}
+                  >
+                    {isPublishingIndex === index ? 'Publishing…' : 'Publish to simulated ticket'}
+                  </button>
+                </div>
               </div>
             )}
             {message.matches?.some((match) => match.source === 'live_helpdesk' && /^\d+$/.test(match.ticket_id)) && (
@@ -908,7 +1144,7 @@ function TicketLookupChat({
         <input
           value={chatDraft}
           onChange={(event) => setChatDraft(event.target.value)}
-          placeholder={selectedTicketId ? `Ask about ticket #${selectedTicketId}…` : 'Ask about a ticket, site, or camera…'}
+          placeholder={selectedTicketId ? `Ask about ticket #${selectedTicketId} or ask to draft a reply…` : 'Ask about tickets, RTSP, NVR, AI Box, or say hello…'}
           aria-label="Ask CarlBot about tickets"
         />
         <button type="submit" aria-label="Ask CarlBot" disabled={!chatDraft.trim() || isLoading}>↑</button>

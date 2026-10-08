@@ -14,6 +14,15 @@ export interface TicketNote {
   created_at: string
 }
 
+export interface CustomerReply {
+  id: number
+  ticket_id: number
+  author: string
+  body: string
+  created_at: string
+  idempotency_key?: string | null
+}
+
 export interface Ticket {
   id: number
   title: string
@@ -30,6 +39,7 @@ export interface Ticket {
   ai_summary: string | null
   ai_state: string | null
   notes?: TicketNote[]
+  customer_replies?: CustomerReply[]
 }
 
 export interface Asset {
@@ -66,4 +76,46 @@ export interface AgentStatus {
   poll_interval: number
   running: boolean
   recent_runs: AgentRun[]
+}
+
+export interface KnowledgeDocumentSection {
+  title: string
+  start_line?: number
+  end_line?: number
+  content: string
+}
+
+export interface KnowledgeDocument {
+  id: string
+  title: string
+  category: string
+  source_path: string
+  sections: KnowledgeDocumentSection[]
+  raw_text?: string
+}
+
+export interface PortalEvent {
+  event_id?: string
+  id?: string | number
+  asset_id: string
+  site_id?: string
+  fault_type?: string
+  fault?: string
+  timestamp?: string
+  created_at?: string
+  cleared?: boolean
+  resolved?: boolean
+}
+
+export interface IncidentRecord {
+  incident_id?: string
+  ticket_id: number
+  asset_id: string
+  status: string
+  diagnosis?: string | null
+  confidence?: string | null
+  auto_action?: string | null
+  root_cause?: string | null
+  route?: Array<{ agent: string; reason?: string }>
+  evidence?: Array<{ label: string; text: string; source: string }>
 }

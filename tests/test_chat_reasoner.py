@@ -150,3 +150,127 @@ def test_unconfigured_chat_uses_grounded_recommendation(monkeypatch):
     assert result['cited_ticket_ids'] == ['1002']
     assert 'historical context only' in result['recommendations'][0]['instruction']
     assert 'policy-gated' not in result['answer']
+
+
+def test_llm_chat_drafts_reply_and_cites_knowledge(monkeypatch):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        reply = {
+            'answer': 'Based on SOP and ticket 1002, the credentials were confirmed.',
+            'recommendations': [{
+                'category': 'check',
+                'instruction': 'Verify the stream in emulator.',
+                'ticket_ids': ['1002'],
+            }],
+            'cited_ticket_ids': ['1002'],
+            'cited_knowledge_sources': ['docs/SOP/rtsp.md (L1-L10)'],
+            'ticket_reply_draft': 'Hello, we verified your camera credentials and video is healthy.',
+        }
+        return httpx.Response(200, json={
+            'choices': [{'message': {'content': json.dumps(reply)}}],
+        })
+
+    monkeypatch.setenv('LLM_BASE_URL', 'https://llm.invalid/v1')
+    monkeypatch.setenv('LLM_MODEL', 'test-model')
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+
+    knowledge = [{
+        'source_path': 'docs/SOP/rtsp.md',
+        'section_title': 'RTSP Settings',
+        'locator': 'L1-L10',
+        'excerpt': 'Check stream settings.',
+    }]
+
+    response = answer_with_reasoning(
+        'Please draft a customer reply',
+        _result(),
+        context_ticket_id=1002,
+        knowledge_sources=knowledge,
+        conversation_history=[{'role': 'user', 'content': 'Hello'}],
+        client=client,
+    )
+
+    assert response['reasoning_mode'] == 'llm'
+    assert response['ticket_reply_draft'] == 'Hello, we verified your camera credentials and video is healthy.'
+    assert response['cited_knowledge_sources'] == ['docs/SOP/rtsp.md (L1-L10)']
+    client.close()
+
+
+def test_llm_chat_rejects_unapproved_knowledge_citation(monkeypatch, caplog):
+    monkeypatch.setenv('LLM_BASE_URL', 'https://llm.invalid/v1')
+    monkeypatch.setenv('LLM_MODEL', 'test-model')
+
+    reply = {
+        'answer': 'I recommend following unapproved doc.',
+        'recommendations': [],
+        'cited_ticket_ids': ['1002'],
+        'cited_knowledge_sources': ['docs/unapproved/secret.md (L1-L5)'],
+        'ticket_reply_draft': None,
+    }
+    client = httpx.Client(transport=httpx.MockTransport(
+        lambda _req: httpx.Response(200, json={'choices': [{'message': {'content': json.dumps(reply)}}]})))
+
+    response = answer_with_reasoning(
+        'What should I check?',
+        _result(),
+        context_ticket_id=1002,
+        knowledge_sources=[{
+            'source_path': 'docs/SOP/rtsp.md',
+            'section_title': 'RTSP Settings',
+            'locator': 'L1-L10',
+            'excerpt': 'Check stream settings.',
+        }],
+        client=client,
+    )
+
+    # Rejection should fallback to deterministic
+    assert response['reasoning_mode'] == 'deterministic'
+    assert 'using grounded fallback' in caplog.text
+    client.close()
+
+
+def test_llm_chat_answers_conversational_greeting_without_ticket_citation(monkeypatch):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json={
+            'choices': [{
+                'message': {
+                    'content': json.dumps({
+                        'answer': "Hello! I'm CarlBot, your AI operations companion. How can I help you navigate the system or troubleshoot camera streams?",
+                        'recommendations': [],
+                        'cited_ticket_ids': [],
+                        'cited_knowledge_sources': [],
+                        'ticket_reply_draft': None,
+                    })
+                }
+            }],
+        })
+
+    monkeypatch.setenv('LLM_BASE_URL', 'https://llm.invalid/v1')
+    monkeypatch.setenv('LLM_MODEL', 'test-model')
+    monkeypatch.setenv('LLM_API_KEY', 'test-only-key')
+    client = httpx.Client(transport=httpx.MockTransport(handle))
+
+    result_dict = {
+        'answer': "Hello!",
+        'matches': [],
+        'reference_export_available': False,
+        'reference_export_configured': False,
+        'is_conversational': True,
+        'intent': 'greeting',
+    }
+
+    response = answer_with_reasoning(
+        'hello',
+        result_dict,
+        client=client,
+    )
+
+    assert response['reasoning_mode'] == 'llm'
+    assert "I'm CarlBot, your AI operations companion" in response['answer']
+    assert response['cited_ticket_ids'] == []
+    client.close()

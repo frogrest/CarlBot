@@ -1,4 +1,4 @@
-import type { AgentStatus, Asset, Ticket, TicketDeskStatus } from './types'
+import type { AgentStatus, Asset, CustomerReply, IncidentRecord, KnowledgeDocument, PortalEvent, Ticket, TicketDeskStatus } from './types'
 
 export interface DiagnosticProbe {
   name: string
@@ -26,11 +26,26 @@ export interface TicketChatRecommendation {
   ticket_ids: string[]
 }
 
+export interface KnowledgeSource {
+  source_path: string
+  section_title: string
+  locator: string
+  excerpt: string
+}
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export interface TicketChatResponse {
   answer: string
   matches: TicketChatMatch[]
   recommendations: TicketChatRecommendation[]
   cited_ticket_ids: string[]
+  cited_knowledge_sources?: string[]
+  ticket_reply_draft?: string | null
+  knowledge_sources?: KnowledgeSource[]
   reasoning_mode: 'llm' | 'deterministic'
   reference_export_available: boolean
 }
@@ -68,10 +83,25 @@ export function updateTicketDeskStatus(ticketId: number, ticketStatus: TicketDes
   })
 }
 
-export function queryTickets(message: string, ticketId: number | null): Promise<TicketChatResponse> {
+export function queryTickets(
+  message: string,
+  ticketId: number | null,
+  history: ChatTurn[] = [],
+): Promise<TicketChatResponse> {
   return requestJson<TicketChatResponse>('/helpdesk/api/chat/query', {
     method: 'POST',
-    body: JSON.stringify({ message, ticket_id: ticketId }),
+    body: JSON.stringify({ message, ticket_id: ticketId, history }),
+  })
+}
+
+export function addCustomerReply(
+  ticketId: number,
+  body: string,
+  idempotencyKey?: string,
+): Promise<{ ok: boolean; ticket_id: number; reply: CustomerReply; duplicate?: boolean }> {
+  return requestJson(`/helpdesk/api/tickets/${ticketId}/customer-replies`, {
+    method: 'POST',
+    body: JSON.stringify({ author: 'technician', body, idempotency_key: idempotencyKey }),
   })
 }
 
@@ -145,4 +175,22 @@ export function resetSimulation(assetId: string): Promise<{ ok: boolean }> {
   return requestJson(`/portal/api/assets/${assetId}/actions/reset-simulation`, {
     method: 'POST',
   })
+}
+
+export async function listKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  const result = await requestJson<{ documents: KnowledgeDocument[] }>('/helpdesk/api/knowledge')
+  return result.documents
+}
+
+export function runMonitorNow(): Promise<{ status: string; episodes_processed?: number }> {
+  return requestJson('/agent/api/monitor/run', { method: 'POST' })
+}
+
+export async function listPortalEvents(): Promise<PortalEvent[]> {
+  const result = await requestJson<{ events: PortalEvent[] }>('/portal/api/events')
+  return result.events
+}
+
+export function getIncident(ticketId: number): Promise<IncidentRecord> {
+  return requestJson<IncidentRecord>(`/agent/api/incidents/${ticketId}`)
 }

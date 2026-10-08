@@ -28,7 +28,7 @@ The original prototype ran one diagnosis and exited. v0.2 turns it into a **pers
 | Helpdesk | http://localhost:8000 | Tickets, notes, history, technician workflow |
 | Portal | http://localhost:8001 | Fake cameras, NVR, AI Box, telemetry, fault injection |
 | Agent | http://localhost:8002 | Continuous autonomous monitor + diagnostic worker |
-| Frontend | http://localhost:8003 | Synthetic ticket queue, ticket detail, copilot and lab inventory |
+| Frontend | http://localhost:8003 | Operations Dashboard, ticket queue/detail, task dispatch, knowledge library, and full-screen CarlBot AI Copilot |
 
 FastAPI interactive docs are available at `/docs` on all three services.
 
