@@ -1,0 +1,10 @@
+{
+  "installed": {
+    "qwen2.5-3b-instruct-q4": {
+      "completed_at": "2026-10-09T21:54:35.088467+00:00",
+      "filename": "Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+      "size_bytes": 1929903264
+    }
+  },
+  "selected_id": "qwen2.5-3b-instruct-q4"
+}

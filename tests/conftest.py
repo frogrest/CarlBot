@@ -5,6 +5,16 @@ starlette's TestClient, and the agent's httpx client is re-pointed at a
 MockTransport that routes its calls to those in-process apps.
 """
 import copy
+import os
+import tempfile
+
+# Tests must never spawn a real local model process or download weights. Force
+# the managed runtime off before the service modules build their module-level
+# runtime; the runtime itself is exercised with injected fakes in
+# tests/test_local_llm.py. The models directory is redirected to a throwaway
+# temp dir so no download/selection test can touch the real one.
+os.environ['LOCAL_LLM_ENABLED'] = '0'
+os.environ['LOCAL_LLM_MODELS_DIR'] = tempfile.mkdtemp(prefix='carlbot-models-')
 
 import httpx
 import pytest

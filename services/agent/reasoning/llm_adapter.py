@@ -12,11 +12,15 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from pydantic import ValidationError
 
+from services.local_llm.client import resolve_endpoint
+
 from .base import Reasoner, ReasoningError
 from .deterministic import DeterministicReasoner
 from .schemas import Plan
 
 if TYPE_CHECKING:
+    from services.local_llm.runtime import LocalLlmRuntime
+
     from ..orchestrator.models import IncidentContext
 
 logger = logging.getLogger(__name__)
@@ -182,13 +186,13 @@ class FallbackReasoner:
         self.fallback.close()
 
 
-def configured_reasoner() -> Reasoner:
-    base_url = os.getenv('LLM_BASE_URL', '').strip()
-    model = os.getenv('LLM_MODEL', '').strip()
+def configured_reasoner(runtime: 'LocalLlmRuntime | None' = None) -> Reasoner:
+    """Pick the reasoner: ready local runtime, external endpoint, or deterministic."""
+    base_url, model = resolve_endpoint(runtime=runtime)
     if not base_url and not model:
         return DeterministicReasoner()
     if not base_url or not model:
         logger.warning(
-            'LLM reasoning disabled: both LLM_BASE_URL and LLM_MODEL are required')
+            'LLM reasoning disabled: both a base URL and model are required')
         return DeterministicReasoner()
-    return FallbackReasoner(LLMReasoner.from_env())
+    return FallbackReasoner(LLMReasoner(base_url, model))

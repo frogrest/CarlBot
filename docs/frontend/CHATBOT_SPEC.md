@@ -73,8 +73,10 @@ Examples:
   includes that ticket's details and up to 20 recorded notes, even if the
   question does not repeat the ticket number. Without a selected ticket, use
   deterministic ticket search to retrieve relevant records.
-- When `LLM_BASE_URL` and `LLM_MODEL` are configured for the Helpdesk service,
-  use the structured LLM responder over only the retrieved live records. Read
+- When a model endpoint is available for the Helpdesk service, use the
+  structured LLM responder over only the retrieved live records. Precedence:
+  a **ready managed local runtime** (`LOCAL_LLM_*`, see `LOCAL_LLM_SETUP.md`) is
+  used first; otherwise an external `LLM_BASE_URL` + `LLM_MODEL` pair. Read
   `LLM_API_KEY` from the process environment when needed. With no configuration,
   use the deterministic grounded reply.
 - Show whether a reply was `LLM-assisted` or `Record-based`. LLM output must
@@ -130,6 +132,50 @@ In addition to the sidebar in the ticket queue and ticket detail views, the appl
   4. *IP Diagnostic Commands* — Essential CLI networking tools (ping, curl, ffprobe, ip, arp, tcpdump).
 - **Rich Message Stream**: Displays conversational bubbles with CarlBot avatar, expandable recommendation callouts, cited SOP/document chips linking to source lines, ticket reference tags, and human-confirmed customer reply draft cards.
 - **Bottom Composer**: Fixed floating chat input with auto-focus, send trigger, `/clear` command support, and explicit operational safety disclaimer reminding technicians that actions are local and read-only.
+
+## Local model runtime status
+
+CarlBot can run its own local OpenAI-compatible model server (a managed
+`llama-server` from llama.cpp) with no API key. The Helpdesk backend exposes
+`GET /api/llm/status` and the idempotent `POST /api/llm/start`, and the UI
+surfaces the truthful state as a badge in the `◈ CarlBot AI` header and in
+compact form beside the ticket-side chat.
+
+- States: `disabled`, `runtime_missing`, `model_not_configured`, `loading`,
+  `ready`, `busy`, `error`.
+- The badge shows **Local model ready** only when the backend confirms the model
+  loaded; the UI never infers readiness on its own.
+- Non-ready states show the backend's setup instructions and a **Retry
+  initialization** action; the badge always states that inference is local and
+  requires no API key.
+- A reply rendered from the managed local server is labelled `LLM-assisted`; a
+  deterministic reply remains `Record-based`.
+- See `LOCAL_LLM_SETUP.md` for model acquisition, memory/speed caveats, and
+  troubleshooting.
+
+### Local model chooser (`ModelManager.tsx`)
+
+The `◈ CarlBot AI` view includes a collapsible **Local AI model** panel that lets
+an operator pick a model to download and activate, so no model file has to be
+placed by hand.
+
+- Lists the curated, allow-listed GGUF catalog from `GET /helpdesk/api/llm/models`
+  with name, parameter count, quantization, file size, minimum RAM, context size,
+  license and the recommended entry.
+- Actions are explicit and user-initiated only: **Download**, **Cancel**,
+  **Use this model**, and **Remove**. The backend (not the client) enforces the
+  allow-list and rejects unknown ids.
+- In-progress downloads show a labelled progress bar; the panel polls only while
+  a download is active and stops when it finishes.
+- After a model is selected, the panel asks the parent to re-read
+  `/api/llm/status`, so the badge stays the single source of truth. The panel
+  never marks a model ready on its own.
+- The panel makes no arbitrary-URL or filesystem-path input available, states
+  that inference is local and key-free, and reminds the operator that model
+  licenses are their responsibility.
+- Responsive: the card grid collapses to one column below 640px and the panel
+  scrolls inside a bounded height below 820px so the fixed-height chat layout
+  cannot overflow on phones.
 
 ## Read-only boundary
 

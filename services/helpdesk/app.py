@@ -13,15 +13,34 @@ from pydantic import BaseModel, Field
 from services.helpdesk.chat_knowledge import KnowledgeRetriever
 from services.helpdesk.chat_reasoner import answer_with_reasoning
 from services.helpdesk.ticket_chat import query_tickets
+from services.local_llm import (
+    ModelDownloader,
+    ModelStore,
+    build_llm_router,
+    LocalLlmRuntime,
+)
+from services.local_llm.config import DEFAULT_MODELS_DIR
+
+# Managed local model server (no API key). Non-blocking when unconfigured.
+# The store/downloader add the curated choose-and-download surface; the runtime
+# uses the store's selection when one is installed.
+local_llm_store = ModelStore(os.getenv('LOCAL_LLM_MODELS_DIR') or DEFAULT_MODELS_DIR)
+local_llm_downloader = ModelDownloader(local_llm_store)
+local_llm_runtime = LocalLlmRuntime.from_env(store=local_llm_store)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    local_llm_runtime.ensure_started()
+    try:
+        yield
+    finally:
+        local_llm_runtime.stop()
 
 
 app = FastAPI(title='Fake Helpdesk', version='0.2.0', lifespan=lifespan)
+app.include_router(build_llm_router(local_llm_store, local_llm_downloader, local_llm_runtime))
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS tickets (
@@ -254,6 +273,18 @@ def api_health():
     return {'service': 'helpdesk', 'ok': True}
 
 
+@app.get('/api/llm/status')
+def llm_status():
+    """Truthful managed-runtime state (no secrets exposed)."""
+    return local_llm_runtime.status().as_dict()
+
+
+@app.post('/api/llm/start')
+def llm_start():
+    """Retry loading the configured local model. Idempotent; takes no body."""
+    return local_llm_runtime.ensure_started().as_dict()
+
+
 @app.get('/api/tickets')
 def list_tickets(status: Optional[str] = None, limit: int = 50):
     con = connect()
@@ -394,6 +425,7 @@ def chat_query(payload: TicketChatQuery):
         context_ticket_id=payload.ticket_id,
         conversation_history=[turn.model_dump() for turn in payload.history],
         knowledge_sources=knowledge_sources,
+        runtime=local_llm_runtime,
     )
 
 

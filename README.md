@@ -38,6 +38,15 @@ Recommended: Docker Desktop with Docker Compose.
 
 The repository does not require an LLM API key for v0.2. The deterministic control loop comes first so that the tool, policy, and verification layers can be tested independently from model quality.
 
+CarlBot can also run its own **local** OpenAI-compatible model server (a managed
+`llama-server` from llama.cpp) with no API key and no separate model server to
+launch by hand. See **[LOCAL_LLM_SETUP.md](LOCAL_LLM_SETUP.md)** for the model
+file, `LOCAL_LLM_*` environment variables, memory/speed caveats, and how to
+verify it. The `◈ CarlBot AI` view shows the live runtime state (including
+*Model not configured* / *Runtime error*) with a **Retry initialization**
+action. When no local model or external `LLM_BASE_URL` is configured, CarlBot
+falls back to deterministic reasoning as before.
+
 ## Start the full lab
 
 From the project directory:

@@ -6,10 +6,15 @@ import json
 import logging
 import os
 import re
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from services.local_llm.client import resolve_endpoint
+
+if TYPE_CHECKING:
+    from services.local_llm.runtime import LocalLlmRuntime
 
 logger = logging.getLogger(__name__)
 _SECRET_ASSIGNMENT = re.compile(
@@ -253,12 +258,12 @@ def _ask_model(
     knowledge_sources: list[dict[str, Any]],
     context_ticket_id: int | None,
     *,
+    base_url: str,
+    model: str,
     client: httpx.Client,
 ) -> ChatReply:
-    base_url = os.getenv('LLM_BASE_URL', '').strip().rstrip('/')
-    model = os.getenv('LLM_MODEL', '').strip()
     if not base_url or not model:
-        raise RuntimeError('LLM_BASE_URL and LLM_MODEL are not configured')
+        raise RuntimeError('no LLM endpoint is configured for ticket chat')
 
     headers = {'Content-Type': 'application/json'}
     api_key = os.getenv('LLM_API_KEY')
@@ -328,12 +333,12 @@ def answer_with_reasoning(
     conversation_history: list[dict[str, str]] | None = None,
     knowledge_sources: list[dict[str, Any]] | None = None,
     client: httpx.Client | None = None,
+    runtime: 'LocalLlmRuntime | None' = None,
 ) -> dict[str, Any]:
     """Return grounded advice; never execute a model recommendation."""
     history = conversation_history or []
     k_sources = knowledge_sources or []
-    base_url = os.getenv('LLM_BASE_URL', '').strip()
-    model = os.getenv('LLM_MODEL', '').strip()
+    base_url, model = resolve_endpoint(runtime=runtime)
     reasoning_mode: Literal['llm', 'deterministic'] = 'deterministic'
     reply = _deterministic_reply(message, result, context_ticket_id, k_sources)
     sources = _source_records(result, context_ticket_id)
@@ -351,6 +356,8 @@ def answer_with_reasoning(
                 history,
                 k_sources,
                 context_ticket_id,
+                base_url=base_url,
+                model=model,
                 client=model_client,
             )
             reply = _validate_reply(

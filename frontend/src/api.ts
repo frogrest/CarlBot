@@ -1,4 +1,4 @@
-import type { AgentStatus, Asset, CustomerReply, IncidentRecord, KnowledgeDocument, PortalEvent, Ticket, TicketDeskStatus } from './types'
+import type { AgentStatus, Asset, CustomerReply, IncidentRecord, KnowledgeDocument, LocalLlmModelCatalog, LocalLlmStatus, PortalEvent, Ticket, TicketDeskStatus } from './types'
 
 export interface DiagnosticProbe {
   name: string
@@ -112,6 +112,43 @@ export async function listAssets(): Promise<Asset[]> {
 
 export function getAgentStatus(): Promise<AgentStatus> {
   return requestJson<AgentStatus>('/agent/api/status')
+}
+
+export function getLocalLlmStatus(): Promise<LocalLlmStatus> {
+  return requestJson<LocalLlmStatus>('/helpdesk/api/llm/status')
+}
+
+/** Retry loading the configured local model. Idempotent; takes no arguments. */
+export function startLocalLlm(): Promise<LocalLlmStatus> {
+  return requestJson<LocalLlmStatus>('/helpdesk/api/llm/start', { method: 'POST' })
+}
+
+function modelPath(modelId: string): string {
+  return `/helpdesk/api/llm/models/${encodeURIComponent(modelId)}`
+}
+
+/** Curated model catalog + install/selection state + live download progress. */
+export function listLocalLlmModels(): Promise<LocalLlmModelCatalog> {
+  return requestJson<LocalLlmModelCatalog>('/helpdesk/api/llm/models')
+}
+
+/** Start downloading an allow-listed catalog model by id. */
+export function downloadLocalLlmModel(modelId: string): Promise<LocalLlmModelCatalog> {
+  return requestJson<LocalLlmModelCatalog>(`${modelPath(modelId)}/download`, { method: 'POST' })
+}
+
+export function cancelLocalLlmModelDownload(modelId: string): Promise<LocalLlmModelCatalog> {
+  return requestJson<LocalLlmModelCatalog>(`${modelPath(modelId)}/download/cancel`, { method: 'POST' })
+}
+
+/** Make an installed model the active one and reload the runtime. */
+export function selectLocalLlmModel(modelId: string): Promise<LocalLlmModelCatalog> {
+  return requestJson<LocalLlmModelCatalog>(`${modelPath(modelId)}/select`, { method: 'POST' })
+}
+
+/** Delete a downloaded model file from the local models folder. */
+export function removeLocalLlmModel(modelId: string): Promise<LocalLlmModelCatalog> {
+  return requestJson<LocalLlmModelCatalog>(modelPath(modelId), { method: 'DELETE' })
 }
 
 export async function runAssetDiagnostics(asset: Asset): Promise<DiagnosticProbe[]> {

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import type { KnowledgeSource, TicketChatMatch, TicketChatRecommendation } from '../api'
-import type { Ticket } from '../types'
+import type { LocalLlmStatus, Ticket } from '../types'
+import { LlmStatusBadge } from './LlmStatusBadge'
+import { ModelManager } from './ModelManager'
 
 export type ChatMessage = {
   role: 'user' | 'assistant'
@@ -28,6 +30,10 @@ interface CarlBotChatViewProps {
   onCancelDraft: (messageIndex: number) => void
   onClearChat: () => void
   onOpenKnowledgeDoc: (sourcePath: string) => void
+  llmStatus: LocalLlmStatus | null
+  onRetryLlm: () => void
+  isRetryingLlm: boolean
+  onRefreshLlmStatus: () => void
 }
 
 const promptStarters = [
@@ -67,6 +73,10 @@ export function CarlBotChatView({
   onCancelDraft,
   onClearChat,
   onOpenKnowledgeDoc,
+  llmStatus,
+  onRetryLlm,
+  isRetryingLlm,
+  onRefreshLlmStatus,
 }: CarlBotChatViewProps) {
   const [isPublishingIndex, setIsPublishingIndex] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -100,6 +110,7 @@ export function CarlBotChatView({
             <p className="carlbot-subtitle">
               Specialized in CCTV video infrastructure, NVR multi-channel recording, Edge AI Boxes, and IT operations.
             </p>
+            <LlmStatusBadge status={llmStatus} onRetry={onRetryLlm} isRetrying={isRetryingLlm} />
           </div>
         </div>
 
@@ -130,6 +141,9 @@ export function CarlBotChatView({
           </button>
         </div>
       </div>
+
+      {/* Local model chooser (collapsible) */}
+      <ModelManager onRefreshStatus={onRefreshLlmStatus} />
 
       {/* Main Conversation Stream */}
       <div className="carlbot-chat-body">

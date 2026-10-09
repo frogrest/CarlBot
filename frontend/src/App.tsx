@@ -3,6 +3,7 @@ import {
   addCustomerReply,
   addTicketNote,
   getAgentStatus,
+  getLocalLlmStatus,
   getTicket,
   listAssets,
   listKnowledgeDocuments,
@@ -14,15 +15,17 @@ import {
   resetSimulation,
   runInvestigation,
   simulateFault,
+  startLocalLlm,
   updateTicketDeskStatus,
 } from './api'
 import type { ChatTurn, DiagnosticProbe, KnowledgeSource, TicketChatMatch, TicketChatRecommendation } from './api'
-import type { AgentStatus, Asset, KnowledgeDocument, PortalEvent, Ticket, TicketDeskStatus, TicketStatus } from './types'
+import type { AgentStatus, Asset, KnowledgeDocument, LocalLlmStatus, PortalEvent, Ticket, TicketDeskStatus, TicketStatus } from './types'
 import { fallbackKnowledgeDocuments } from './knowledgeData'
 import { DashboardView } from './components/DashboardView'
 import { TasksView } from './components/TasksView'
 import { KnowledgeView } from './components/KnowledgeView'
 import { CarlBotChatView } from './components/CarlBotChatView'
+import { LlmStatusBadge } from './components/LlmStatusBadge'
 import './App.css'
 
 type View = 'dashboard' | 'tickets' | 'tasks' | 'knowledge' | 'assets' | 'carlbot'
@@ -125,6 +128,8 @@ function App() {
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [assets, setAssets] = useState<Asset[]>([])
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null)
+  const [llmStatus, setLlmStatus] = useState<LocalLlmStatus | null>(null)
+  const [isRetryingLlm, setIsRetryingLlm] = useState(false)
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(ticketIdFromLocation)
   const [ticketDetail, setTicketDetail] = useState<Ticket | null>(null)
   const [serviceErrors, setServiceErrors] = useState<ServiceErrors>({})
@@ -156,12 +161,13 @@ function App() {
   }, [chatMessages, isChatLoading])
 
   const refreshWorkspace = useCallback(async () => {
-    const [ticketResult, assetResult, agentResult, eventResult, knowledgeResult] = await Promise.allSettled([
+    const [ticketResult, assetResult, agentResult, eventResult, knowledgeResult, llmResult] = await Promise.allSettled([
       listTickets(),
       listAssets(),
       getAgentStatus(),
       listPortalEvents(),
       listKnowledgeDocuments(),
+      getLocalLlmStatus(),
     ])
 
     setServiceErrors((current) => {
@@ -184,6 +190,8 @@ function App() {
     if (knowledgeResult.status === 'fulfilled' && knowledgeResult.value.length > 0) {
       setKnowledgeDocs(knowledgeResult.value)
     }
+    // A status failure must not surface as a helpdesk outage; the ticket probe owns that signal.
+    if (llmResult.status === 'fulfilled') setLlmStatus(llmResult.value)
     setIsLoading(false)
   }, [])
 
@@ -420,6 +428,31 @@ function App() {
     )))
   }
 
+  async function handleRetryLlm() {
+    setIsRetryingLlm(true)
+    try {
+      const status = await startLocalLlm()
+      setLlmStatus(status)
+      setNotice(
+        status.ready
+          ? 'Local model is ready. Chat can use local inference.'
+          : `Local model not ready: ${status.detail}`,
+      )
+    } catch (error) {
+      setNotice(`Local model retry failed: ${error instanceof Error ? error.message : 'Helpdesk service error'}`)
+    } finally {
+      setIsRetryingLlm(false)
+    }
+  }
+
+  async function refreshLlmStatus() {
+    try {
+      setLlmStatus(await getLocalLlmStatus())
+    } catch {
+      // Non-fatal: keep the last truthful status rather than showing a false outage.
+    }
+  }
+
   const handleTriggerMonitor = async () => {
     setIsMonitoring(true)
     try {
@@ -487,6 +520,9 @@ function App() {
       onOpenTicket={selectTicket}
       onPublishReply={handlePublishReply}
       onCancelDraft={handleCancelDraft}
+      llmStatus={llmStatus}
+      onRetryLlm={() => void handleRetryLlm()}
+      isRetryingLlm={isRetryingLlm}
     />
   )
 
@@ -574,6 +610,10 @@ function App() {
             onOpenKnowledgeDoc={(_sourcePath) => {
               setView('knowledge')
             }}
+            llmStatus={llmStatus}
+            onRetryLlm={() => void handleRetryLlm()}
+            isRetryingLlm={isRetryingLlm}
+            onRefreshLlmStatus={() => void refreshLlmStatus()}
           />
         ) : view === 'dashboard' ? (
           <DashboardView
@@ -990,8 +1030,9 @@ function TicketDetail({
 }
 
 function TicketLookupChat({
-  chatMessages, chatDraft, isLoading, messagesRef, selectedTicketId, setChatDraft, onChat, onOpenTicket,
+  chatMessages, chatDraft, isLoading, messagesRef, selectedTicketId, setChatDraft,  onChat, onOpenTicket,
   onPublishReply, onCancelDraft,
+  llmStatus, onRetryLlm, isRetryingLlm,
 }: {
   chatMessages: ChatMessage[]
   chatDraft: string
@@ -1003,6 +1044,9 @@ function TicketLookupChat({
   onOpenTicket: (ticketId: number) => void
   onPublishReply: (ticketId: number, body: string, messageIndex: number) => void
   onCancelDraft: (messageIndex: number) => void
+  llmStatus: LocalLlmStatus | null
+  onRetryLlm: () => void
+  isRetryingLlm: boolean
 }) {
   const [draftEdits, setDraftEdits] = useState<Record<number, string>>({})
   const [isPublishingIndex, setIsPublishingIndex] = useState<number | null>(null)
@@ -1016,6 +1060,7 @@ function TicketLookupChat({
         <div><span className="chat-icon">✦</span><div className="chat-title-copy"><h2 id="ticket-chat-title">CarlBot</h2><span>AI operations companion</span></div></div>
         <span className="chat-readonly">ADVICE ONLY</span>
       </div>
+      <LlmStatusBadge status={llmStatus} onRetry={onRetryLlm} isRetrying={isRetryingLlm} compact />
       <p className="chat-intro">
         {selectedTicketId
           ? `Using ticket #${selectedTicketId} and its recorded conversation as context.`

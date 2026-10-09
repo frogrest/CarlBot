@@ -12,8 +12,15 @@ from fastapi.responses import HTMLResponse
 from .core import Agent
 from .orchestrator import Budget, IncidentState, IncidentStore, Orchestrator
 from .policy import AuditLog, PolicyEngine
-from .reasoning import configured_reasoner
+from .reasoning import DeterministicReasoner, Reasoner, configured_reasoner
 from .tools import ToolBus
+from services.local_llm import (
+    ModelDownloader,
+    ModelStore,
+    build_llm_router,
+    LocalLlmRuntime,
+)
+from services.local_llm.config import DEFAULT_MODELS_DIR
 
 HELPDESK_URL = os.getenv('HELPDESK_URL', 'http://localhost:8000')
 PORTAL_URL = os.getenv('PORTAL_URL', 'http://localhost:8001')
@@ -23,15 +30,34 @@ AGENT_DB = Path(os.getenv('AGENT_DB', '/app/data/agent.db'))
 
 app = FastAPI(title='Autonomous AI Ops Agent', version='0.2.0')
 agent = Agent(HELPDESK_URL, PORTAL_URL, DOCS_ROOT)
-reasoner = configured_reasoner()
+local_llm_store = ModelStore(os.getenv('LOCAL_LLM_MODELS_DIR') or DEFAULT_MODELS_DIR)
+local_llm_downloader = ModelDownloader(local_llm_store)
+local_llm_runtime = LocalLlmRuntime.from_env(store=local_llm_store)
+# Deterministic until the managed runtime (or an external endpoint) is ready;
+# the reasoner is rebuilt during startup once the runtime reports ready.
+reasoner: Reasoner = DeterministicReasoner()
+
+
+def _rebuild_reasoner() -> None:
+    """Rebuild the reasoner after the active model changes (select/remove)."""
+    global reasoner
+    reasoner = configured_reasoner(runtime=local_llm_runtime)
+
+
+app.include_router(build_llm_router(
+    local_llm_store, local_llm_downloader, local_llm_runtime,
+    on_select=_rebuild_reasoner,
+))
 stop_event = threading.Event()
 worker_thread: threading.Thread | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global worker_thread
+    global worker_thread, reasoner
     init_db()
+    local_llm_runtime.ensure_started()
+    reasoner = configured_reasoner(runtime=local_llm_runtime)
     worker_thread = threading.Thread(target=worker, daemon=True)
     worker_thread.start()
     try:
@@ -41,6 +67,7 @@ async def lifespan(app: FastAPI):
         if worker_thread:
             worker_thread.join(timeout=2)
         reasoner.close()
+        local_llm_runtime.stop()
         agent.close()
 
 
@@ -237,6 +264,18 @@ def home():
 @app.get('/api/health')
 def health():
     return {'service': 'agent', 'ok': True}
+
+
+@app.get('/api/llm/status')
+def llm_status():
+    """Truthful managed-runtime state for the agent's own runtime instance."""
+    return local_llm_runtime.status().as_dict()
+
+
+@app.post('/api/llm/start')
+def llm_start():
+    """Retry loading the agent's configured local model. Idempotent."""
+    return local_llm_runtime.ensure_started().as_dict()
 
 
 @app.get('/api/status')

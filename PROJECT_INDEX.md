@@ -16,6 +16,7 @@ This repository combines the earlier AI Ops Lab with the new multi-agent helpdes
 8. `docs/frontend/HELPDESK_REPLICATION.md` — screenshot-driven frontend replication.
 9. `docs/frontend/CHATBOT_SPEC.md` — chatbot UX and `/clear` behavior.
 10. `ONE_SHOT_BUILD_PROMPT.md` — one master build prompt for an AI coding agent.
+11. `LOCAL_LLM_SETUP.md` — optional managed local `llama.cpp` runtime (no API key): model file, `LOCAL_LLM_*` settings, caveats, and verification.
 
 ## Specialist agents
 
@@ -40,7 +41,7 @@ The included lab (services at version 0.2.0) already contains:
 - Tests
 - Docker Compose runtime
 
-The Phase 2 orchestrator is validated: `services/agent/orchestrator/` (state machine, evidence router, budgets, engine), `services/agent/policy/` (permission engine + audit log), and `services/agent/tools/` (safe ToolBus), wired into `services/agent/main.py` and helpdesk status updates. Phase 3 adds deterministic, evidence-only specialists under `services/agent/specialists/` for Helpdesk, Network, RTSP, Camera/NVR, AI Box, Knowledge, Evidence Review, and Technician Handoff. Phase 4 adds `services/agent/reasoning/`: deterministic default, optional schema-validated LLM adapter, and deterministic fallback. Specialist lookup tools are read-only and budgeted; policy remains the only permission authority. Validation details and limitations are in `NEXT_AGENT_BRIEF.md`. Still ahead: screenshot-driven frontend completion (operative prompt: `frontend/FRONTEND_BUILD_PROMPT.md`) and full chatbot UI.
+The Phase 2 orchestrator is validated: `services/agent/orchestrator/` (state machine, evidence router, budgets, engine), `services/agent/policy/` (permission engine + audit log), and `services/agent/tools/` (safe ToolBus), wired into `services/agent/main.py` and helpdesk status updates. Phase 3 adds deterministic, evidence-only specialists under `services/agent/specialists/` for Helpdesk, Network, RTSP, Camera/NVR, AI Box, Knowledge, Evidence Review, and Technician Handoff. Phase 4 adds `services/agent/reasoning/`: deterministic default, optional schema-validated LLM adapter, and deterministic fallback. A managed local runtime (`services/local_llm/`) can start and own a loopback `llama-server` so no Ollama or API key is needed; see `LOCAL_LLM_SETUP.md`. The `◈ CarlBot AI` view includes a **Local AI model chooser** that downloads a model from a curated, allow-listed GGUF catalog (`services/local_llm/catalog.py`) with progress, cancel, select, and remove; downloads are explicit and user-initiated only (no arbitrary URLs, never automatic). Specialist lookup tools are read-only and budgeted; policy remains the only permission authority. Validation details and limitations are in `NEXT_AGENT_BRIEF.md`. Still ahead: screenshot-driven frontend completion (operative prompt: `frontend/FRONTEND_BUILD_PROMPT.md`) and full chatbot UI.
 
 ## Safety rule
 

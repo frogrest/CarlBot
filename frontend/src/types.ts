@@ -78,6 +78,72 @@ export interface AgentStatus {
   recent_runs: AgentRun[]
 }
 
+export type LocalLlmState =
+  | 'disabled'
+  | 'runtime_missing'
+  | 'model_not_configured'
+  | 'loading'
+  | 'ready'
+  | 'busy'
+  | 'error'
+
+export interface LocalLlmStatus {
+  state: LocalLlmState
+  ready: boolean
+  detail: string
+  model_path: string
+  base_url: string
+  pid: number | null
+  instructions: string[]
+}
+
+export type LocalLlmDownloadState =
+  | 'idle'
+  | 'downloading'
+  | 'verifying'
+  | 'completed'
+  | 'error'
+  | 'cancelled'
+
+/** One entry in the curated, allow-listed download catalog. */
+export interface LocalLlmModel {
+  id: string
+  display_name: string
+  family: string
+  parameters: string
+  quantization: string
+  filename: string
+  size_bytes: number
+  license: string
+  repo: string
+  download_url: string
+  context_window: number
+  min_ram_gb: number
+  summary: string
+  recommended: boolean
+  installed: boolean
+  installed_size_bytes: number | null
+  is_selected: boolean
+}
+
+export interface ModelDownloadProgress {
+  model_id: string
+  state: LocalLlmDownloadState
+  bytes_downloaded: number
+  total_bytes: number
+  percent: number | null
+  error: string
+}
+
+export interface LocalLlmModelCatalog {
+  models: LocalLlmModel[]
+  selected_id: string | null
+  active_model_path: string
+  models_dir: string
+  download: Record<string, ModelDownloadProgress>
+  runtime: LocalLlmStatus
+}
+
 export interface KnowledgeDocumentSection {
   title: string
   start_line?: number
